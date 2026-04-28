@@ -1,4 +1,5 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts, useLocation } from "@tanstack/react-router";
+import { useEffect } from "react";
 import appCss from "../styles.css?url";
 import AppSidebar from "@/components/AppSidebar";
 import AppHeader from "@/components/AppHeader";
@@ -75,6 +76,12 @@ function AppFrame() {
   const location = useLocation();
   const isLoginRoute = location.pathname === "/login";
 
+  useEffect(() => {
+    if (!isLoginRoute && !auth.loading && (!auth.user || auth.needsMfa)) {
+      window.location.href = "/login";
+    }
+  }, [auth.loading, auth.needsMfa, auth.user, isLoginRoute]);
+
   if (isLoginRoute) return <Outlet />;
 
   if (auth.loading) {
@@ -82,7 +89,6 @@ function AppFrame() {
   }
 
   if (!auth.user || auth.needsMfa) {
-    window.location.href = "/login";
     return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Opening secure sign in…</div>;
   }
 
