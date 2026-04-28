@@ -18,7 +18,7 @@ export const Route = createFileRoute("/submit")({
 });
 
 const requestSchema = z.object({
-  title: z.string().trim().min(1, "Request title is required.").max(5000, "Request title is too long."),
+  title: z.string().trim().min(15, "Please provide a more detailed request title of at least 15 characters.").max(5000, "Request title is too long."),
   requesterEmail: z.string().trim().email("Enter a valid university email."),
   department: z.string().trim().min(2, "Department is required.").max(80),
   fundingSource: z.enum(["department", "research", "university"], { required_error: "Select a funding source." }),
@@ -60,8 +60,11 @@ function SubmitPage() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ id: string; createdAt: string; routedTo: string } | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [titleValue, setTitleValue] = useState("");
   const defaultEmail = auth.user?.email ?? "";
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const titleCharacters = titleValue.trim().length;
+  const titleIsValid = titleCharacters >= 15;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -134,8 +137,9 @@ function SubmitPage() {
       form.reset();
       setFiles([]);
       setFundingSource("");
+      setTitleValue("");
     } catch (err) {
-      setErrors({ title: err instanceof Error ? err.message : "Unable to submit request." });
+      setErrors({ title: err instanceof Error ? err.message : "Submission failed. Please review the highlighted fields and try again." });
     } finally {
       setSubmitting(false);
     }
@@ -190,7 +194,7 @@ function SubmitPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="grid gap-4 md:grid-cols-2">
-              <Input name="title" label="Request title" placeholder="Lab equipment purchase" error={errors.title} />
+              <TitleInput value={titleValue} onChange={setTitleValue} error={errors.title} isValid={titleIsValid} characterCount={titleCharacters} />
               <Input name="requesterEmail" label="Requester email" type="email" defaultValue={defaultEmail} placeholder="name@university.edu" error={errors.requesterEmail} />
               <Input name="department" label="Department" defaultValue={auth.profile?.department ?? ""} placeholder="Chemistry" error={errors.department} />
               <Input name="amount" label="Amount (USD)" type="number" min="0" step="0.01" placeholder="0.00" error={errors.amount} />
