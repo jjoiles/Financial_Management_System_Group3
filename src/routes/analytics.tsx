@@ -24,7 +24,7 @@ export const Route = createFileRoute("/analytics")({
   }),
 });
 
-const COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#a855f7", "#ef4444"];
+const COLORS = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"];
 
 function AnalyticsPage() {
   const pending = mockRequests.filter((r) => r.status === "Submitted" || r.status === "Under Review").length;
@@ -46,18 +46,18 @@ function AnalyticsPage() {
       </div>
 
       {/* KPI Row */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k) => (
-          <div key={k.label} className="rounded-xl border border-border bg-card p-5">
+          <div key={k.label} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <p className="text-xs text-muted-foreground">{k.label}</p>
             <p className="mt-1 text-2xl font-bold font-[family-name:var(--font-display)] text-card-foreground">{k.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-4 xl:grid-cols-2">
         {/* Monthly Requests */}
-        <div className="rounded-xl border border-border bg-card p-5">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <h3 className="text-sm font-semibold font-[family-name:var(--font-display)] text-card-foreground mb-4">Monthly Requests</h3>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={monthlyData}>
@@ -80,7 +80,7 @@ function AnalyticsPage() {
         </div>
 
         {/* Funding Distribution */}
-        <div className="rounded-xl border border-border bg-card p-5">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <h3 className="text-sm font-semibold font-[family-name:var(--font-display)] text-card-foreground mb-4">Funding Distribution</h3>
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
@@ -115,7 +115,7 @@ function AnalyticsPage() {
       </div>
 
       {/* Turnaround by Department */}
-      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <h3 className="text-sm font-semibold font-[family-name:var(--font-display)] text-card-foreground mb-4">Avg. Approval Turnaround by Department (days)</h3>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={turnaroundData} layout="vertical">
