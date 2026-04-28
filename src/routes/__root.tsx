@@ -1,8 +1,9 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { Outlet, Link, createRootRoute, HeadContent, Scripts, useLocation } from "@tanstack/react-router";
 import appCss from "../styles.css?url";
 import AppSidebar from "@/components/AppSidebar";
 import AppHeader from "@/components/AppHeader";
 import { AppProvider } from "@/lib/app-context";
+import { AuthProvider, useAuth } from "@/lib/auth-context";
 
 function NotFoundComponent() {
   return (
@@ -63,12 +64,35 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   return (
+    <AuthProvider>
+      <AppFrame />
+    </AuthProvider>
+  );
+}
+
+function AppFrame() {
+  const auth = useAuth();
+  const location = useLocation();
+  const isLoginRoute = location.pathname === "/login";
+
+  if (isLoginRoute) return <Outlet />;
+
+  if (auth.loading) {
+    return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading secure workspace…</div>;
+  }
+
+  if (!auth.user || auth.needsMfa) {
+    window.location.href = "/login";
+    return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Opening secure sign in…</div>;
+  }
+
+  return (
     <AppProvider>
-      <div className="flex min-h-screen">
+      <div className="min-h-screen bg-background lg:flex">
         <AppSidebar />
-        <div className="flex-1 ml-60">
+        <div className="min-w-0 flex-1 lg:ml-64">
           <AppHeader />
-          <main className="mt-16 p-6">
+          <main className="px-4 pb-8 pt-20 sm:px-6 lg:px-8">
             <Outlet />
           </main>
         </div>
