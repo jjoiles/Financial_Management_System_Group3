@@ -18,14 +18,14 @@ export const Route = createFileRoute("/submit")({
 });
 
 const requestSchema = z.object({
-  title: z.string().trim().min(3, "Enter a descriptive request title.").max(120),
+  title: z.string().trim().min(1, "Request title is required.").max(5000, "Request title is too long."),
   requesterEmail: z.string().trim().email("Enter a valid university email."),
   department: z.string().trim().min(2, "Department is required.").max(80),
   fundingSource: z.enum(["department", "research", "university"], { required_error: "Select a funding source." }),
   amount: z.coerce.number().positive("Amount must be greater than zero.").max(9999999, "Amount is too large."),
   neededBy: z.string().min(1, "Needed-by date is required."),
   priority: z.enum(["low", "medium", "high"]),
-  description: z.string().trim().min(20, "Add at least 20 characters of context.").max(2000),
+  description: z.string().trim().min(1, "Business justification is required.").max(10000, "Business justification is too long."),
   grantNumber: z.string().trim().optional(),
   principalInvestigator: z.string().trim().optional(),
   universityProgram: z.string().trim().optional(),
