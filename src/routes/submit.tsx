@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent, type InputHTMLAttributes } from "react";
 import { z } from "zod";
-import { AlertCircle, CalendarDays, CheckCircle2, FileCheck2, Loader2, Paperclip, Route, UploadCloud, Zap } from "lucide-react";
+import { AlertCircle, CalendarDays, CheckCircle2, FileCheck2, Loader2, Paperclip, Route as RouteIcon, UploadCloud, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 
 type FundingSource = "department" | "research" | "university";
 
-export const RouteConfig = createFileRoute("/submit")({
+export const Route = createFileRoute("/submit")({
   component: SubmitPage,
   head: () => ({
     meta: [
@@ -16,8 +16,6 @@ export const RouteConfig = createFileRoute("/submit")({
     ],
   }),
 });
-
-export { RouteConfig as Route };
 
 const requestSchema = z.object({
   title: z.string().trim().min(3, "Enter a descriptive request title.").max(120),
@@ -179,7 +177,7 @@ function SubmitPage() {
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Submit validated funding requests with conditional fields, supporting files, generated metadata, and immediate routing.</p>
             </div>
             <div className="rounded-2xl border border-border bg-background p-4">
-              <Route className="mb-3 h-7 w-7 text-primary" />
+              <RouteIcon className="mb-3 h-7 w-7 text-primary" />
               <div className="space-y-2 text-xs text-muted-foreground">
                 <FlowStep text="Validate" active />
                 <FlowStep text="Attach" active />
@@ -297,7 +295,7 @@ function SubmitPage() {
   );
 }
 
-function Input({ label, error, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }) {
+function Input({ label, error, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-semibold text-foreground">{label}</span>
