@@ -18,7 +18,7 @@ export const Route = createFileRoute("/submit")({
 });
 
 const requestSchema = z.object({
-  title: z.string().trim().min(1, "Request title is required.").max(5000, "Request title is too long."),
+  title: z.string().trim().min(15, "Please provide a more detailed request title of at least 15 characters.").max(5000, "Request title is too long."),
   requesterEmail: z.string().trim().email("Enter a valid university email."),
   department: z.string().trim().min(2, "Department is required.").max(80),
   fundingSource: z.enum(["department", "research", "university"], { required_error: "Select a funding source." }),
@@ -60,8 +60,11 @@ function SubmitPage() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ id: string; createdAt: string; routedTo: string } | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [titleValue, setTitleValue] = useState("");
   const defaultEmail = auth.user?.email ?? "";
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const titleCharacters = titleValue.trim().length;
+  const titleIsValid = titleCharacters >= 15;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -134,8 +137,9 @@ function SubmitPage() {
       form.reset();
       setFiles([]);
       setFundingSource("");
+      setTitleValue("");
     } catch (err) {
-      setErrors({ title: err instanceof Error ? err.message : "Unable to submit request." });
+      setErrors({ title: err instanceof Error ? err.message : "Submission failed. Please review the highlighted fields and try again." });
     } finally {
       setSubmitting(false);
     }
@@ -190,7 +194,7 @@ function SubmitPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="grid gap-4 md:grid-cols-2">
-              <Input name="title" label="Request title" placeholder="Lab equipment purchase" error={errors.title} />
+              <TitleInput value={titleValue} onChange={setTitleValue} error={errors.title} isValid={titleIsValid} characterCount={titleCharacters} />
               <Input name="requesterEmail" label="Requester email" type="email" defaultValue={defaultEmail} placeholder="name@university.edu" error={errors.requesterEmail} />
               <Input name="department" label="Department" defaultValue={auth.profile?.department ?? ""} placeholder="Chemistry" error={errors.department} />
               <Input name="amount" label="Amount (USD)" type="number" min="0" step="0.01" placeholder="0.00" error={errors.amount} />
@@ -300,6 +304,30 @@ function Input({ label, error, ...props }: InputHTMLAttributes<HTMLInputElement>
     <label className="block">
       <span className="mb-1.5 block text-xs font-semibold text-foreground">{label}</span>
       <input {...props} className={`h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:ring-2 focus:ring-ring ${error ? "border-destructive" : "border-input"}`} />
+      {error && <ErrorText text={error} />}
+    </label>
+  );
+}
+
+function TitleInput({ value, onChange, error, isValid, characterCount }: { value: string; onChange: (value: string) => void; error?: string; isValid: boolean; characterCount: number }) {
+  const showFeedback = value.length > 0;
+
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-semibold text-foreground">Request title</span>
+      <input
+        name="title"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="e.g., Funding Request for Math Department Field Trip Transportation and Materials"
+        className={`h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:ring-2 focus:ring-ring ${error ? "border-destructive" : showFeedback && isValid ? "border-success" : "border-input"}`}
+      />
+      <div className="mt-1 flex items-center justify-between gap-3 text-xs">
+        <span className={showFeedback && !isValid ? "font-medium text-destructive" : showFeedback && isValid ? "font-medium text-success" : "text-muted-foreground"}>
+          {showFeedback ? (isValid ? "Title is detailed enough." : "Please provide a more detailed request title (at least 15 characters).") : "Minimum 15 characters."}
+        </span>
+        <span className="shrink-0 text-muted-foreground">{characterCount}/15</span>
+      </div>
       {error && <ErrorText text={error} />}
     </label>
   );
