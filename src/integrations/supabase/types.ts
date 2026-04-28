@@ -14,16 +14,232 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      financial_requests: {
+        Row: {
+          amount: number
+          created_at: string
+          department: string
+          description: string
+          funding_source: Database["public"]["Enums"]["funding_source"]
+          grant_number: string | null
+          id: string
+          metadata: Json
+          needed_by: string
+          principal_investigator: string | null
+          priority: Database["public"]["Enums"]["request_priority"]
+          request_number: string
+          requester_email: string
+          routed_to: string | null
+          status: Database["public"]["Enums"]["request_status"]
+          title: string
+          university_program: string | null
+          updated_at: string
+          user_id: string
+          workflow_triggered_at: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          department: string
+          description: string
+          funding_source: Database["public"]["Enums"]["funding_source"]
+          grant_number?: string | null
+          id?: string
+          metadata?: Json
+          needed_by: string
+          principal_investigator?: string | null
+          priority?: Database["public"]["Enums"]["request_priority"]
+          request_number?: string
+          requester_email: string
+          routed_to?: string | null
+          status?: Database["public"]["Enums"]["request_status"]
+          title: string
+          university_program?: string | null
+          updated_at?: string
+          user_id: string
+          workflow_triggered_at?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          department?: string
+          description?: string
+          funding_source?: Database["public"]["Enums"]["funding_source"]
+          grant_number?: string | null
+          id?: string
+          metadata?: Json
+          needed_by?: string
+          principal_investigator?: string | null
+          priority?: Database["public"]["Enums"]["request_priority"]
+          request_number?: string
+          requester_email?: string
+          routed_to?: string | null
+          status?: Database["public"]["Enums"]["request_status"]
+          title?: string
+          university_program?: string | null
+          updated_at?: string
+          user_id?: string
+          workflow_triggered_at?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          department: string | null
+          display_name: string
+          id: string
+          phone: string | null
+          title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          department?: string | null
+          display_name?: string
+          id?: string
+          phone?: string | null
+          title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          department?: string | null
+          display_name?: string
+          id?: string
+          phone?: string | null
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      request_attachments: {
+        Row: {
+          content_type: string | null
+          created_at: string
+          file_name: string
+          file_path: string
+          file_size: number | null
+          id: string
+          request_id: string
+          user_id: string
+        }
+        Insert: {
+          content_type?: string | null
+          created_at?: string
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          id?: string
+          request_id: string
+          user_id: string
+        }
+        Update: {
+          content_type?: string | null
+          created_at?: string
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          id?: string
+          request_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_attachments_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "financial_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      workflow_events: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          message: string
+          metadata: Json
+          request_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          message: string
+          metadata?: Json
+          request_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          message?: string
+          metadata?: Json
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_events_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "financial_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_admin_or_reviewer: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "reviewer" | "leadership" | "requester"
+      funding_source: "department" | "research" | "university"
+      request_priority: "low" | "medium" | "high"
+      request_status:
+        | "submitted"
+        | "under_review"
+        | "approved"
+        | "rejected"
+        | "completed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +366,17 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "reviewer", "leadership", "requester"],
+      funding_source: ["department", "research", "university"],
+      request_priority: ["low", "medium", "high"],
+      request_status: [
+        "submitted",
+        "under_review",
+        "approved",
+        "rejected",
+        "completed",
+      ],
+    },
   },
 } as const
