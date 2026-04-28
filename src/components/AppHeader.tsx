@@ -6,12 +6,12 @@ import { Bell, ChevronDown, LogOut, Menu, ShieldCheck, User } from "lucide-react
 
 export default function AppHeader() {
   const { role, setRole } = useAppContext();
-  const { profile, user, signOut, roles } = useAuth();
+  const { profile, user, signOut, roles: availableRoles } = useAuth();
   const [showNotifs, setShowNotifs] = useState(false);
   const [showRole, setShowRole] = useState(false);
   const unread = mockNotifications.filter((n) => !n.read).length;
 
-  const roles: { value: UserRole; label: string }[] = [
+  const roleOptions: { value: UserRole; label: string }[] = [
     { value: "requester", label: "Faculty / Staff" },
     { value: "admin", label: "Admin / Reviewer" },
     { value: "leadership", label: "Leadership" },
@@ -48,7 +48,7 @@ export default function AppHeader() {
           </button>
           {showRole && (
             <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-border bg-card p-1 shadow-lg">
-              {roles.filter((r) => roles.includes(r.value)).map((r) => (
+              {roleOptions.filter((r) => availableRoles.includes(r.value)).map((r) => (
                 <button
                   key={r.value}
                   onClick={() => { setRole(r.value); setShowRole(false); }}
