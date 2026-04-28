@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { mockRequests } from "@/lib/mock-data";
 import { useAppContext } from "@/lib/app-context";
 import StatusBadge from "@/components/StatusBadge";
+import financeOpsImage from "@/assets/university-finance-ops.jpg";
 import {
   FileText,
   Clock,
@@ -36,11 +37,24 @@ function OverviewPage() {
 
   return (
     <div className="space-y-6">
+      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl shadow-primary/5">
+        <div className="grid gap-6 p-5 lg:grid-cols-[1fr_26rem] lg:items-center">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">University finance operations</p>
+            <h1 className="mt-2 text-3xl font-bold text-card-foreground sm:text-4xl">
+              {role === "leadership" ? "Executive Overview" : role === "admin" ? "Admin Dashboard" : "My Overview"}
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Submit, route, review, and measure financial requests across department, research, and university funding streams.
+            </p>
+          </div>
+          <img src={financeOpsImage} alt="University finance team reviewing automated request dashboards" width={1280} height={768} className="h-56 w-full rounded-xl object-cover" />
+        </div>
+      </section>
+
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-[family-name:var(--font-display)] text-foreground">
-            {role === "leadership" ? "Executive Overview" : role === "admin" ? "Admin Dashboard" : "My Overview"}
-          </h1>
+          <h2 className="text-xl font-bold font-[family-name:var(--font-display)] text-foreground">Operational snapshot</h2>
           <p className="text-sm text-muted-foreground mt-1">
             Financial request management at a glance
           </p>
@@ -57,9 +71,9 @@ function OverviewPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
-          <div key={stat.label} className="rounded-xl border border-border bg-card p-5">
+          <div key={stat.label} className="rounded-2xl border border-border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-muted-foreground">{stat.label}</span>
               <stat.icon className={`h-4 w-4 ${stat.color}`} />
@@ -70,7 +84,7 @@ function OverviewPage() {
       </div>
 
       {/* Total Amount Card */}
-      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
             <TrendingUp className="h-5 w-5 text-primary" />
@@ -85,7 +99,7 @@ function OverviewPage() {
       </div>
 
       {/* Recent Requests */}
-      <div className="rounded-xl border border-border bg-card">
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h3 className="text-sm font-semibold font-[family-name:var(--font-display)] text-card-foreground">
             Recent Activity
