@@ -215,6 +215,7 @@ function SubmitPage() {
           </div>
           <h1 className="mt-5 text-2xl font-bold text-card-foreground">Request submitted and routed</h1>
           <p className="mt-2 text-sm text-muted-foreground">A tracking record, timestamp, attachment manifest, and automation event were created.</p>
+          {result.warning && <p className="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm font-medium text-warning">{result.warning}</p>}
           <div className="mt-6 grid gap-3 text-left sm:grid-cols-3">
             <Meta label="Request ID" value={result.id} />
             <Meta label="Timestamp" value={new Date(result.createdAt).toLocaleString()} />
@@ -324,7 +325,7 @@ function SubmitPage() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            {submitError && <p className="text-sm font-medium text-destructive sm:basis-full"><AlertCircle className="mr-1 inline h-4 w-4" />{submitError}</p>}
+            {submitError && <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive sm:basis-full"><AlertCircle className="mr-1 inline h-4 w-4" />{submitError}</p>}
             <button disabled={submitting} type="submit" className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
               Submit and trigger workflow
