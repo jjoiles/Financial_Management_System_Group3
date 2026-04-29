@@ -144,37 +144,38 @@ function SubmitPage() {
     try {
       const routedTo = routingMap[parsed.data.fundingSource];
       const client = supabase as any;
-      const { data: inserted, error } = await client
-        .from("financial_requests")
-        .insert({
-          user_id: auth.user.id,
-          title: parsed.data.description.slice(0, 120) || "Financial request",
-          requester_email: parsed.data.requesterEmail,
-          department: parsed.data.department,
-          funding_source: parsed.data.fundingSource,
-          amount: parsed.data.amount,
-          needed_by: parsed.data.neededBy,
-          priority: parsed.data.priority,
-          description: parsed.data.description,
-          grant_number: parsed.data.grantNumber || null,
-          principal_investigator: parsed.data.principalInvestigator || null,
-          university_program: parsed.data.universityProgram || null,
-          status: "submitted",
-          workflow_triggered_at: new Date().toISOString(),
-          routed_to: routedTo,
-          metadata: { source: "FinReq portal", automation: "Power Automate equivalent", attachmentCount: files.length },
-        })
-        .select("id, request_number, created_at")
-        .single();
+      const requestNumber = createRequestNumber();
+      const inserted = await insertFinancialRequest(client, {
+        user_id: auth.user.id,
+        request_number: requestNumber,
+        title: parsed.data.description.slice(0, 120) || "Financial request",
+        requester_email: parsed.data.requesterEmail,
+        department: parsed.data.department,
+        funding_source: parsed.data.fundingSource,
+        amount: parsed.data.amount,
+        needed_by: parsed.data.neededBy,
+        priority: parsed.data.priority,
+        description: parsed.data.description,
+        grant_number: parsed.data.grantNumber || null,
+        principal_investigator: parsed.data.principalInvestigator || null,
+        university_program: parsed.data.universityProgram || null,
+        status: "submitted",
+        workflow_triggered_at: new Date().toISOString(),
+        routed_to: routedTo,
+        metadata: { source: "FinReq portal", automation: "Power Automate equivalent", attachmentCount: files.length },
+      }, requestNumber);
 
-      if (error) throw error;
+      let warning = "";
 
       for (const file of files) {
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
         const path = `${auth.user.id}/${inserted.id}/${Date.now()}-${safeName}`;
         const upload = await client.storage.from("request-attachments").upload(path, file, { upsert: false });
-        if (upload.error) throw upload.error;
-        await client.from("request_attachments").insert({
+        if (upload.error) {
+          warning = "Your request was saved, but one or more attachments could not be uploaded.";
+          break;
+        }
+        const attachment = await client.from("request_attachments").insert({
           request_id: inserted.id,
           user_id: auth.user.id,
           file_name: file.name,
@@ -182,22 +183,24 @@ function SubmitPage() {
           file_size: file.size,
           content_type: file.type,
         });
+        if (attachment.error) warning = "Your request was saved, but one or more attachments could not be linked.";
       }
 
-      await client.from("workflow_events").insert({
+      const workflow = await client.from("workflow_events").insert({
         request_id: inserted.id,
         actor_user_id: auth.user.id,
         event_type: "workflow_triggered",
         message: `Automated routing triggered to ${routedTo}.`,
         metadata: { requestNumber: inserted.request_number, connector: "Power Automate simulation" },
       });
+      if (workflow.error && !warning) warning = "Your request was saved, but the workflow log could not be recorded.";
 
-      setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo });
+      setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo, warning });
       form.reset();
       setFiles([]);
       setFundingSource("");
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Submission failed. Please review the highlighted fields and try again.");
+      setSubmitError(getSubmitErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
