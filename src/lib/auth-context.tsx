@@ -38,6 +38,26 @@ const mapRole = (role: string): UserRole | null => {
   return null;
 };
 
+const transientBackendCodes = new Set(["PGRST000", "PGRST001", "PGRST002"]);
+
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const isTransientBackendError = (error: unknown) => {
+  const maybeError = error as { code?: string; message?: string; details?: string; status?: number } | null;
+  if (!maybeError) return false;
+  const text = `${maybeError.message ?? ""} ${maybeError.details ?? ""}`.toLowerCase();
+  return transientBackendCodes.has(maybeError.code ?? "") || maybeError.status === 503 || text.includes("schema cache") || text.includes("no connection");
+};
+
+async function withTransientRetry<T extends { error?: unknown }>(operation: () => PromiseLike<T>, attempts = 4): Promise<T> {
+  let response = await operation();
+  for (let attempt = 1; attempt < attempts && isTransientBackendError(response.error); attempt += 1) {
+    await wait(700 * attempt);
+    response = await operation();
+  }
+  return response;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -64,24 +84,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const { data: profileData } = await supabase
+    const fallbackProfile = {
+      display_name: activeUser.user_metadata?.display_name ?? activeUser.email?.split("@")[0] ?? "",
+      department: activeUser.user_metadata?.department ?? null,
+      title: null,
+      phone: null,
+    };
+
+    const { data: profileData, error: profileError } = await withTransientRetry(() => supabase
       .from("profiles")
       .select("display_name, department, title, phone")
       .eq("user_id", activeUser.id)
-      .maybeSingle();
+      .maybeSingle());
+
+    if (profileError) {
+      setProfile(fallbackProfile);
+      setRoles(["requester"]);
+      return;
+    }
 
     if (!profileData) {
-      await supabase.from("profiles").insert({
+      const { data: createdProfile } = await supabase.from("profiles").upsert({
         user_id: activeUser.id,
-        display_name: activeUser.user_metadata?.display_name ?? activeUser.email?.split("@")[0] ?? "",
-        department: activeUser.user_metadata?.department ?? null,
-      });
+        display_name: fallbackProfile.display_name,
+        department: fallbackProfile.department,
+      }, { onConflict: "user_id" }).select("display_name, department, title, phone").maybeSingle();
+      setProfile(createdProfile ?? fallbackProfile);
     } else {
       setProfile(profileData);
     }
 
-    const { data: roleData } = await supabase.from("user_roles").select("role").eq("user_id", activeUser.id);
-    const mapped = roleData?.map((item) => mapRole(item.role)).filter(Boolean) as UserRole[] | undefined;
+    const { data: roleData } = await withTransientRetry(() => supabase.from("user_roles").select("role").eq("user_id", activeUser.id));
+    const mapped = roleData?.map((item: { role: string }) => mapRole(item.role)).filter(Boolean) as UserRole[] | undefined;
     setRoles(mapped?.length ? mapped : ["requester"]);
   };
 

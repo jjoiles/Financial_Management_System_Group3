@@ -83,7 +83,7 @@ const getSubmitErrorMessage = (error: unknown) => {
 };
 
 async function insertFinancialRequest(client: any, payload: Record<string, unknown>, requestNumber: string) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
     const { data, error } = await client
       .from("financial_requests")
       .insert(payload)
@@ -101,8 +101,8 @@ async function insertFinancialRequest(client: any, payload: Record<string, unkno
       if (!existing.error && existing.data) return existing.data;
     }
 
-    if (attempt < 2 && isTransientBackendError(error)) {
-      await wait(750 * (attempt + 1));
+    if (attempt < 5 && isTransientBackendError(error)) {
+      await wait(Math.min(800 * 2 ** attempt, 8000));
       continue;
     }
 
