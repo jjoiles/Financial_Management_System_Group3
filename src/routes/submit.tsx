@@ -126,6 +126,22 @@ const savePrototypeRequest = (payload: Record<string, unknown>, requestNumber: s
   return savedRequest;
 };
 
+const savePrototypeAttachments = (requestId: string, userId: string, attachments: File[]) => {
+  if (attachments.length === 0) return;
+  const records = attachments.map((file) => ({
+    id: crypto.randomUUID(),
+    request_id: requestId,
+    user_id: userId,
+    file_name: file.name,
+    file_path: `prototype://${requestId}/${file.name}`,
+    file_size: file.size,
+    content_type: file.type,
+    created_at: new Date().toISOString(),
+  }));
+  const existing = JSON.parse(window.localStorage.getItem("prototype-request-attachments") ?? "[]") as unknown[];
+  window.localStorage.setItem("prototype-request-attachments", JSON.stringify([...records, ...existing].slice(0, 100)));
+};
+
 function SubmitPage() {
   const auth = useAuth();
   const [fundingSource, setFundingSource] = useState<FundingSource | "">("");
@@ -139,7 +155,10 @@ function SubmitPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!auth.user) return;
+    if (!auth.user) {
+      setSubmitError("Please sign in before submitting a financial request.");
+      return;
+    }
 
     const form = event.currentTarget;
     const data = Object.fromEntries(new FormData(form).entries());
@@ -186,39 +205,51 @@ function SubmitPage() {
       try {
         inserted = await insertFinancialRequest(client, requestPayload, requestNumber);
       } catch (error) {
-        if (!isTransientBackendError(error)) throw error;
         inserted = savePrototypeRequest(requestPayload, requestNumber, createdAt);
-        warning = "Saved in prototype mode because the hosted backend was temporarily unavailable. Attachments and workflow were simulated.";
-      }
-
-      for (const file of inserted.prototype ? [] : files) {
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
-        const path = `${auth.user.id}/${inserted.id}/${Date.now()}-${safeName}`;
-        const upload = await client.storage.from("request-attachments").upload(path, file, { upsert: false });
-        if (upload.error) {
-          warning ||= "Your request was saved, but one or more attachments could not be uploaded, so attachment storage was simulated.";
-          continue;
-        }
-        const attachment = await client.from("request_attachments").insert({
-          request_id: inserted.id,
-          user_id: auth.user.id,
-          file_name: file.name,
-          file_path: path,
-          file_size: file.size,
-          content_type: file.type,
-        });
-        if (attachment.error) warning ||= "Your request was saved, but one or more attachments could not be linked, so attachment tracking was simulated.";
+        savePrototypeAttachments(inserted.id, auth.user.id, files);
+        const reason = getSubmitErrorMessage(error);
+        warning = `Saved in prototype mode. ${reason} Attachments and workflow were simulated.`;
       }
 
       if (!inserted.prototype) {
-        const workflow = await client.from("workflow_events").insert({
-          request_id: inserted.id,
-          actor_user_id: auth.user.id,
-          event_type: "workflow_triggered",
-          message: `Automated routing triggered to ${routedTo}.`,
-          metadata: { requestNumber: inserted.request_number, connector: "Power Automate simulation" },
-        });
-        if (workflow.error && !warning) warning = "Your request was saved. Power Automate is not connected yet, so the workflow trigger was simulated.";
+        try {
+          for (const file of files) {
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+            const path = `${auth.user.id}/${inserted.id}/${Date.now()}-${safeName}`;
+            const upload = await client.storage.from("request-attachments").upload(path, file, { upsert: false });
+            if (upload.error) {
+              warning ||= "Your request was saved, but one or more attachments could not be uploaded, so attachment storage was simulated.";
+              continue;
+            }
+            const attachment = await client.from("request_attachments").insert({
+              request_id: inserted.id,
+              user_id: auth.user.id,
+              file_name: file.name,
+              file_path: path,
+              file_size: file.size,
+              content_type: file.type,
+            });
+            if (attachment.error) warning ||= "Your request was saved, but one or more attachments could not be linked, so attachment tracking was simulated.";
+          }
+        } catch {
+          savePrototypeAttachments(inserted.id, auth.user.id, files);
+          warning ||= "Your request was saved, but attachment storage is not connected right now, so attachments were simulated.";
+        }
+      }
+
+      if (!inserted.prototype) {
+        try {
+          const workflow = await client.from("workflow_events").insert({
+            request_id: inserted.id,
+            actor_user_id: auth.user.id,
+            event_type: "workflow_triggered",
+            message: `Automated routing triggered to ${routedTo}.`,
+            metadata: { requestNumber: inserted.request_number, connector: "Power Automate simulation" },
+          });
+          if (workflow.error && !warning) warning = "Your request was saved. Power Automate is not connected yet, so the workflow trigger was simulated.";
+        } catch {
+          warning ||= "Your request was saved. Power Automate is not connected yet, so the workflow trigger was simulated.";
+        }
       }
 
       setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo, warning });
