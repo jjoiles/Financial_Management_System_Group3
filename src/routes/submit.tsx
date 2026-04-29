@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 
 type FundingSource = "department" | "research" | "university";
 type SubmissionResult = { id: string; createdAt: string; routedTo: string; warning?: string };
+type SavedRequest = { id: string; request_number: string; created_at: string; prototype?: boolean };
 
 export const Route = createFileRoute("/submit")({
   component: SubmitPage,
@@ -112,6 +113,19 @@ async function insertFinancialRequest(client: any, payload: Record<string, unkno
   throw new Error("Submission failed. Please try again.");
 }
 
+const savePrototypeRequest = (payload: Record<string, unknown>, requestNumber: string, createdAt: string): SavedRequest => {
+  const savedRequest = {
+    ...payload,
+    id: crypto.randomUUID(),
+    request_number: requestNumber,
+    created_at: createdAt,
+    prototype: true,
+  };
+  const existing = JSON.parse(window.localStorage.getItem("prototype-financial-requests") ?? "[]") as unknown[];
+  window.localStorage.setItem("prototype-financial-requests", JSON.stringify([savedRequest, ...existing].slice(0, 50)));
+  return savedRequest;
+};
+
 function SubmitPage() {
   const auth = useAuth();
   const [fundingSource, setFundingSource] = useState<FundingSource | "">("");
@@ -145,7 +159,8 @@ function SubmitPage() {
       const routedTo = routingMap[parsed.data.fundingSource];
       const client = supabase as any;
       const requestNumber = createRequestNumber();
-      const inserted = await insertFinancialRequest(client, {
+      const createdAt = new Date().toISOString();
+      const requestPayload = {
         user_id: auth.user.id,
         request_number: requestNumber,
         title: parsed.data.description.slice(0, 120) || "Financial request",
@@ -160,20 +175,29 @@ function SubmitPage() {
         principal_investigator: parsed.data.principalInvestigator || null,
         university_program: parsed.data.universityProgram || null,
         status: "submitted",
-        workflow_triggered_at: new Date().toISOString(),
+        workflow_triggered_at: createdAt,
         routed_to: routedTo,
         metadata: { source: "FinReq portal", automation: "Power Automate equivalent", attachmentCount: files.length },
-      }, requestNumber);
+      };
 
       let warning = "";
+      let inserted: SavedRequest;
 
-      for (const file of files) {
+      try {
+        inserted = await insertFinancialRequest(client, requestPayload, requestNumber);
+      } catch (error) {
+        if (!isTransientBackendError(error)) throw error;
+        inserted = savePrototypeRequest(requestPayload, requestNumber, createdAt);
+        warning = "Saved in prototype mode because the hosted backend was temporarily unavailable. Attachments and workflow were simulated.";
+      }
+
+      for (const file of inserted.prototype ? [] : files) {
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
         const path = `${auth.user.id}/${inserted.id}/${Date.now()}-${safeName}`;
         const upload = await client.storage.from("request-attachments").upload(path, file, { upsert: false });
         if (upload.error) {
-          warning = "Your request was saved, but one or more attachments could not be uploaded.";
-          break;
+          warning ||= "Your request was saved, but one or more attachments could not be uploaded, so attachment storage was simulated.";
+          continue;
         }
         const attachment = await client.from("request_attachments").insert({
           request_id: inserted.id,
@@ -183,17 +207,19 @@ function SubmitPage() {
           file_size: file.size,
           content_type: file.type,
         });
-        if (attachment.error) warning = "Your request was saved, but one or more attachments could not be linked.";
+        if (attachment.error) warning ||= "Your request was saved, but one or more attachments could not be linked, so attachment tracking was simulated.";
       }
 
-      const workflow = await client.from("workflow_events").insert({
-        request_id: inserted.id,
-        actor_user_id: auth.user.id,
-        event_type: "workflow_triggered",
-        message: `Automated routing triggered to ${routedTo}.`,
-        metadata: { requestNumber: inserted.request_number, connector: "Power Automate simulation" },
-      });
-      if (workflow.error && !warning) warning = "Your request was saved, but the workflow log could not be recorded.";
+      if (!inserted.prototype) {
+        const workflow = await client.from("workflow_events").insert({
+          request_id: inserted.id,
+          actor_user_id: auth.user.id,
+          event_type: "workflow_triggered",
+          message: `Automated routing triggered to ${routedTo}.`,
+          metadata: { requestNumber: inserted.request_number, connector: "Power Automate simulation" },
+        });
+        if (workflow.error && !warning) warning = "Your request was saved. Power Automate is not connected yet, so the workflow trigger was simulated.";
+      }
 
       setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo, warning });
       form.reset();
