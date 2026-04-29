@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 
 type FundingSource = "department" | "research" | "university";
+type SubmissionResult = { id: string; createdAt: string; routedTo: string; warning?: string };
 
 export const Route = createFileRoute("/submit")({
   component: SubmitPage,
@@ -52,12 +53,71 @@ const routingMap: Record<FundingSource, string> = {
   university: "Provost Finance Office",
 };
 
+const transientBackendCodes = new Set(["PGRST000", "PGRST001", "PGRST002"]);
+
+const createRequestNumber = () => {
+  const year = new Date().getFullYear();
+  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `FR-${year}-${suffix}`;
+};
+
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const isTransientBackendError = (error: unknown) => {
+  const maybeError = error as { code?: string; message?: string; details?: string; status?: number };
+  const text = `${maybeError.message ?? ""} ${maybeError.details ?? ""}`.toLowerCase();
+  return (
+    transientBackendCodes.has(maybeError.code ?? "") ||
+    maybeError.status === 503 ||
+    text.includes("schema cache") ||
+    text.includes("recovery mode") ||
+    text.includes("no connection")
+  );
+};
+
+const getSubmitErrorMessage = (error: unknown) => {
+  if (isTransientBackendError(error)) {
+    return "The request could not be saved because the backend was temporarily unavailable. Please try again in a moment.";
+  }
+  return error instanceof Error ? error.message : "Submission failed. Please review the required fields and try again.";
+};
+
+async function insertFinancialRequest(client: any, payload: Record<string, unknown>, requestNumber: string) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { data, error } = await client
+      .from("financial_requests")
+      .insert(payload)
+      .select("id, request_number, created_at")
+      .single();
+
+    if (!error) return data;
+
+    if (error.code === "23505") {
+      const existing = await client
+        .from("financial_requests")
+        .select("id, request_number, created_at")
+        .eq("request_number", requestNumber)
+        .maybeSingle();
+      if (!existing.error && existing.data) return existing.data;
+    }
+
+    if (attempt < 2 && isTransientBackendError(error)) {
+      await wait(750 * (attempt + 1));
+      continue;
+    }
+
+    throw error;
+  }
+
+  throw new Error("Submission failed. Please try again.");
+}
+
 function SubmitPage() {
   const auth = useAuth();
   const [fundingSource, setFundingSource] = useState<FundingSource | "">("");
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<{ id: string; createdAt: string; routedTo: string } | null>(null);
+  const [result, setResult] = useState<SubmissionResult | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitError, setSubmitError] = useState("");
   const defaultEmail = auth.user?.email ?? "";
@@ -84,37 +144,38 @@ function SubmitPage() {
     try {
       const routedTo = routingMap[parsed.data.fundingSource];
       const client = supabase as any;
-      const { data: inserted, error } = await client
-        .from("financial_requests")
-        .insert({
-          user_id: auth.user.id,
-          title: parsed.data.description.slice(0, 120) || "Financial request",
-          requester_email: parsed.data.requesterEmail,
-          department: parsed.data.department,
-          funding_source: parsed.data.fundingSource,
-          amount: parsed.data.amount,
-          needed_by: parsed.data.neededBy,
-          priority: parsed.data.priority,
-          description: parsed.data.description,
-          grant_number: parsed.data.grantNumber || null,
-          principal_investigator: parsed.data.principalInvestigator || null,
-          university_program: parsed.data.universityProgram || null,
-          status: "submitted",
-          workflow_triggered_at: new Date().toISOString(),
-          routed_to: routedTo,
-          metadata: { source: "FinReq portal", automation: "Power Automate equivalent", attachmentCount: files.length },
-        })
-        .select("id, request_number, created_at")
-        .single();
+      const requestNumber = createRequestNumber();
+      const inserted = await insertFinancialRequest(client, {
+        user_id: auth.user.id,
+        request_number: requestNumber,
+        title: parsed.data.description.slice(0, 120) || "Financial request",
+        requester_email: parsed.data.requesterEmail,
+        department: parsed.data.department,
+        funding_source: parsed.data.fundingSource,
+        amount: parsed.data.amount,
+        needed_by: parsed.data.neededBy,
+        priority: parsed.data.priority,
+        description: parsed.data.description,
+        grant_number: parsed.data.grantNumber || null,
+        principal_investigator: parsed.data.principalInvestigator || null,
+        university_program: parsed.data.universityProgram || null,
+        status: "submitted",
+        workflow_triggered_at: new Date().toISOString(),
+        routed_to: routedTo,
+        metadata: { source: "FinReq portal", automation: "Power Automate equivalent", attachmentCount: files.length },
+      }, requestNumber);
 
-      if (error) throw error;
+      let warning = "";
 
       for (const file of files) {
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
         const path = `${auth.user.id}/${inserted.id}/${Date.now()}-${safeName}`;
         const upload = await client.storage.from("request-attachments").upload(path, file, { upsert: false });
-        if (upload.error) throw upload.error;
-        await client.from("request_attachments").insert({
+        if (upload.error) {
+          warning = "Your request was saved, but one or more attachments could not be uploaded.";
+          break;
+        }
+        const attachment = await client.from("request_attachments").insert({
           request_id: inserted.id,
           user_id: auth.user.id,
           file_name: file.name,
@@ -122,22 +183,24 @@ function SubmitPage() {
           file_size: file.size,
           content_type: file.type,
         });
+        if (attachment.error) warning = "Your request was saved, but one or more attachments could not be linked.";
       }
 
-      await client.from("workflow_events").insert({
+      const workflow = await client.from("workflow_events").insert({
         request_id: inserted.id,
         actor_user_id: auth.user.id,
         event_type: "workflow_triggered",
         message: `Automated routing triggered to ${routedTo}.`,
         metadata: { requestNumber: inserted.request_number, connector: "Power Automate simulation" },
       });
+      if (workflow.error && !warning) warning = "Your request was saved, but the workflow log could not be recorded.";
 
-      setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo });
+      setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo, warning });
       form.reset();
       setFiles([]);
       setFundingSource("");
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Submission failed. Please review the highlighted fields and try again.");
+      setSubmitError(getSubmitErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -152,6 +215,7 @@ function SubmitPage() {
           </div>
           <h1 className="mt-5 text-2xl font-bold text-card-foreground">Request submitted and routed</h1>
           <p className="mt-2 text-sm text-muted-foreground">A tracking record, timestamp, attachment manifest, and automation event were created.</p>
+          {result.warning && <p className="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm font-medium text-warning">{result.warning}</p>}
           <div className="mt-6 grid gap-3 text-left sm:grid-cols-3">
             <Meta label="Request ID" value={result.id} />
             <Meta label="Timestamp" value={new Date(result.createdAt).toLocaleString()} />
@@ -261,7 +325,7 @@ function SubmitPage() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            {submitError && <p className="text-sm font-medium text-destructive sm:basis-full"><AlertCircle className="mr-1 inline h-4 w-4" />{submitError}</p>}
+            {submitError && <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive sm:basis-full"><AlertCircle className="mr-1 inline h-4 w-4" />{submitError}</p>}
             <button disabled={submitting} type="submit" className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
               Submit and trigger workflow
