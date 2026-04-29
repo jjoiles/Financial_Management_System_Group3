@@ -18,7 +18,7 @@ export const Route = createFileRoute("/submit")({
 });
 
 const requestSchema = z.object({
-  title: z.string().trim(),
+  title: z.string().trim().min(1, "Request title is required."),
   requesterEmail: z.string().trim().email("Enter a valid university email."),
   department: z.string().trim().min(2, "Department is required.").max(80),
   fundingSource: z.enum(["department", "research", "university"], { required_error: "Select a funding source." }),
@@ -192,7 +192,20 @@ function SubmitPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="grid gap-4 md:grid-cols-2">
-              <TitleInput value={titleValue} onChange={setTitleValue} error={errors.title} />
+              <TitleInput
+                value={titleValue}
+                onChange={(value) => {
+                  setTitleValue(value);
+                  if (errors.title && value.trim()) {
+                    setErrors((current) => {
+                      const next = { ...current };
+                      delete next.title;
+                      return next;
+                    });
+                  }
+                }}
+                error={errors.title}
+              />
               <Input name="requesterEmail" label="Requester email" type="email" defaultValue={defaultEmail} placeholder="name@university.edu" error={errors.requesterEmail} />
               <Input name="department" label="Department" defaultValue={auth.profile?.department ?? ""} placeholder="Chemistry" error={errors.department} />
               <Input name="amount" label="Amount (USD)" type="number" min="0" step="0.01" placeholder="0.00" error={errors.amount} />
@@ -266,7 +279,7 @@ function SubmitPage() {
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
               Submit and trigger workflow
             </button>
-            <button type="reset" onClick={() => { setFundingSource(""); setFiles([]); setErrors({}); }} className="rounded-md border border-border bg-background px-6 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
+            <button type="reset" onClick={() => { setFundingSource(""); setFiles([]); setErrors({}); setTitleValue(""); }} className="rounded-md border border-border bg-background px-6 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
               Clear form
             </button>
           </div>
