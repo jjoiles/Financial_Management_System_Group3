@@ -18,7 +18,6 @@ export const Route = createFileRoute("/submit")({
 });
 
 const requestSchema = z.object({
-  title: z.string().trim().min(1, "Request title is required."),
   requesterEmail: z.string().trim().email("Enter a valid university email."),
   department: z.string().trim().min(2, "Department is required.").max(80),
   fundingSource: z.enum(["department", "research", "university"], { required_error: "Select a funding source." }),
@@ -60,7 +59,7 @@ function SubmitPage() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ id: string; createdAt: string; routedTo: string } | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
-  const [titleValue, setTitleValue] = useState("");
+  const [submitError, setSubmitError] = useState("");
   const defaultEmail = auth.user?.email ?? "";
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
@@ -74,10 +73,12 @@ function SubmitPage() {
 
     if (!parsed.success) {
       setErrors(Object.fromEntries(parsed.error.issues.map((issue) => [issue.path[0], issue.message])) as FormErrors);
+      setSubmitError("");
       return;
     }
 
     setErrors({});
+    setSubmitError("");
     setSubmitting(true);
 
     try {
@@ -87,7 +88,7 @@ function SubmitPage() {
         .from("financial_requests")
         .insert({
           user_id: auth.user.id,
-          title: parsed.data.title,
+          title: parsed.data.description.slice(0, 120) || "Financial request",
           requester_email: parsed.data.requesterEmail,
           department: parsed.data.department,
           funding_source: parsed.data.fundingSource,
@@ -135,9 +136,8 @@ function SubmitPage() {
       form.reset();
       setFiles([]);
       setFundingSource("");
-      setTitleValue("");
     } catch (err) {
-      setErrors({ title: err instanceof Error ? err.message : "Submission failed. Please review the highlighted fields and try again." });
+      setSubmitError(err instanceof Error ? err.message : "Submission failed. Please review the highlighted fields and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -192,20 +192,6 @@ function SubmitPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="grid gap-4 md:grid-cols-2">
-              <TitleInput
-                value={titleValue}
-                onChange={(value) => {
-                  setTitleValue(value);
-                  if (errors.title && value.trim()) {
-                    setErrors((current) => {
-                      const next = { ...current };
-                      delete next.title;
-                      return next;
-                    });
-                  }
-                }}
-                error={errors.title}
-              />
               <Input name="requesterEmail" label="Requester email" type="email" defaultValue={defaultEmail} placeholder="name@university.edu" error={errors.requesterEmail} />
               <Input name="department" label="Department" defaultValue={auth.profile?.department ?? ""} placeholder="Chemistry" error={errors.department} />
               <Input name="amount" label="Amount (USD)" type="number" min="0" step="0.01" placeholder="0.00" error={errors.amount} />
@@ -275,11 +261,12 @@ function SubmitPage() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
+            {submitError && <p className="text-sm font-medium text-destructive sm:basis-full"><AlertCircle className="mr-1 inline h-4 w-4" />{submitError}</p>}
             <button disabled={submitting} type="submit" className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
               Submit and trigger workflow
             </button>
-            <button type="reset" onClick={() => { setFundingSource(""); setFiles([]); setErrors({}); setTitleValue(""); }} className="rounded-md border border-border bg-background px-6 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
+            <button type="reset" onClick={() => { setFundingSource(""); setFiles([]); setErrors({}); setSubmitError(""); }} className="rounded-md border border-border bg-background px-6 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
               Clear form
             </button>
           </div>
