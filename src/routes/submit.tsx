@@ -83,6 +83,13 @@ const getSubmitErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : "Submission failed. Please review the required fields and try again.";
 };
 
+const getPrototypeFallbackReason = (error: unknown) => {
+  if (isTransientBackendError(error)) {
+    return "The hosted backend was temporarily unavailable.";
+  }
+  return error instanceof Error ? error.message : "The hosted backend rejected the request.";
+};
+
 async function insertFinancialRequest(client: any, payload: Record<string, unknown>, requestNumber: string) {
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const { data, error } = await client
@@ -207,7 +214,7 @@ function SubmitPage() {
       } catch (error) {
         inserted = savePrototypeRequest(requestPayload, requestNumber, createdAt);
         savePrototypeAttachments(inserted.id, auth.user.id, files);
-        const reason = getSubmitErrorMessage(error);
+        const reason = getPrototypeFallbackReason(error);
         warning = `Saved in prototype mode. ${reason} Attachments and workflow were simulated.`;
       }
 
