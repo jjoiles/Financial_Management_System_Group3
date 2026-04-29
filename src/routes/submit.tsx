@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 
 type FundingSource = "department" | "research" | "university";
+type SubmissionResult = { id: string; createdAt: string; routedTo: string; warning?: string };
 
 export const Route = createFileRoute("/submit")({
   component: SubmitPage,
@@ -52,12 +53,71 @@ const routingMap: Record<FundingSource, string> = {
   university: "Provost Finance Office",
 };
 
+const transientBackendCodes = new Set(["PGRST000", "PGRST001", "PGRST002"]);
+
+const createRequestNumber = () => {
+  const year = new Date().getFullYear();
+  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `FR-${year}-${suffix}`;
+};
+
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const isTransientBackendError = (error: unknown) => {
+  const maybeError = error as { code?: string; message?: string; details?: string; status?: number };
+  const text = `${maybeError.message ?? ""} ${maybeError.details ?? ""}`.toLowerCase();
+  return (
+    transientBackendCodes.has(maybeError.code ?? "") ||
+    maybeError.status === 503 ||
+    text.includes("schema cache") ||
+    text.includes("recovery mode") ||
+    text.includes("no connection")
+  );
+};
+
+const getSubmitErrorMessage = (error: unknown) => {
+  if (isTransientBackendError(error)) {
+    return "The request could not be saved because the backend was temporarily unavailable. Please try again in a moment.";
+  }
+  return error instanceof Error ? error.message : "Submission failed. Please review the required fields and try again.";
+};
+
+async function insertFinancialRequest(client: any, payload: Record<string, unknown>, requestNumber: string) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { data, error } = await client
+      .from("financial_requests")
+      .insert(payload)
+      .select("id, request_number, created_at")
+      .single();
+
+    if (!error) return data;
+
+    if (error.code === "23505") {
+      const existing = await client
+        .from("financial_requests")
+        .select("id, request_number, created_at")
+        .eq("request_number", requestNumber)
+        .maybeSingle();
+      if (!existing.error && existing.data) return existing.data;
+    }
+
+    if (attempt < 2 && isTransientBackendError(error)) {
+      await wait(750 * (attempt + 1));
+      continue;
+    }
+
+    throw error;
+  }
+
+  throw new Error("Submission failed. Please try again.");
+}
+
 function SubmitPage() {
   const auth = useAuth();
   const [fundingSource, setFundingSource] = useState<FundingSource | "">("");
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<{ id: string; createdAt: string; routedTo: string } | null>(null);
+  const [result, setResult] = useState<SubmissionResult | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitError, setSubmitError] = useState("");
   const defaultEmail = auth.user?.email ?? "";
