@@ -307,22 +307,6 @@ function Input({ label, error, ...props }: InputHTMLAttributes<HTMLInputElement>
   );
 }
 
-function TitleInput({ value, onChange, error }: { value: string; onChange: (value: string) => void; error?: string }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold text-foreground">Request title</span>
-      <input
-        name="title"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="e.g., Funding Request for Math Department Field Trip Transportation and Materials"
-        className={`h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:ring-2 focus:ring-ring ${error ? "border-destructive" : "border-input"}`}
-      />
-      {error && <ErrorText text={error} />}
-    </label>
-  );
-}
-
 function ErrorText({ text }: { text: string }) {
   return <p className="mt-1 flex items-center gap-1 text-xs font-medium text-destructive"><AlertCircle className="h-3 w-3" />{text}</p>;
 }
