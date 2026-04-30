@@ -12,7 +12,8 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { mockRequests, monthlyData, fundingDistribution, turnaroundData } from "@/lib/mock-data";
+import { monthlyData, fundingDistribution, turnaroundData } from "@/lib/mock-data";
+import { useFinancialRequests } from "@/lib/requests-data";
 
 export const Route = createFileRoute("/analytics")({
   component: AnalyticsPage,
@@ -27,9 +28,10 @@ export const Route = createFileRoute("/analytics")({
 const COLORS = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"];
 
 function AnalyticsPage() {
-  const pending = mockRequests.filter((r) => r.status === "Submitted" || r.status === "Under Review").length;
-  const completed = mockRequests.filter((r) => r.status === "Completed" || r.status === "Approved").length;
-  const avgAmount = Math.round(mockRequests.reduce((s, r) => s + r.amount, 0) / mockRequests.length);
+  const { data: requests } = useFinancialRequests();
+  const pending = requests.filter((r) => r.status === "Submitted" || r.status === "Under Review").length;
+  const completed = requests.filter((r) => r.status === "Completed" || r.status === "Approved").length;
+  const avgAmount = requests.length ? Math.round(requests.reduce((s, r) => s + r.amount, 0) / requests.length) : 0;
 
   const kpis = [
     { label: "Avg. Turnaround", value: "4.8 days" },

@@ -12,9 +12,9 @@ import {
 
 const navItems = [
   { to: "/", label: "Overview", icon: LayoutDashboard, roles: ["admin", "requester", "leadership"] as const },
-  { to: "/submit", label: "New Request", icon: FileText, roles: ["requester", "admin"] as const },
-  { to: "/requests", label: "All Requests", icon: ClipboardList, roles: ["admin"] as const },
-  { to: "/tracking", label: "My Requests", icon: Search, roles: ["requester"] as const },
+  { to: "/submit", label: "New Request", icon: FileText, roles: ["requester", "admin", "leadership"] as const },
+  { to: "/tracking", label: "My Requests", icon: Search, roles: ["requester", "admin", "leadership"] as const },
+  { to: "/requests", label: "All Requests", icon: ClipboardList, roles: ["admin", "leadership"] as const },
   { to: "/analytics", label: "Analytics", icon: BarChart3, roles: ["leadership", "admin"] as const },
 ];
 

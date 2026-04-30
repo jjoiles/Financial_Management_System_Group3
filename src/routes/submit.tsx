@@ -285,9 +285,14 @@ function SubmitPage() {
             <Meta label="Timestamp" value={new Date(result.createdAt).toLocaleString()} />
             <Meta label="Routed to" value={result.routedTo} />
           </div>
-          <button onClick={() => setResult(null)} className="mt-7 rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
-            Submit another request
-          </button>
+          <div className="mt-7 flex flex-col items-center justify-center gap-2 sm:flex-row">
+            <button onClick={() => setResult(null)} className="rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
+              Submit another request
+            </button>
+            <a href="/tracking" className="rounded-md border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
+              View My Requests
+            </a>
+          </div>
         </div>
       </div>
     );
