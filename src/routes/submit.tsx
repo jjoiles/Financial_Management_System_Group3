@@ -1,9 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState, type FormEvent, type InputHTMLAttributes } from "react";
 import { z } from "zod";
-import { AlertCircle, CalendarDays, CheckCircle2, FileCheck2, Loader2, Paperclip, Route as RouteIcon, UploadCloud, Zap } from "lucide-react";
+import { AlertCircle, ArrowLeft, CalendarDays, CheckCircle2, FileCheck2, Home, Loader2, Paperclip, Route as RouteIcon, UploadCloud, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
+import submitHero from "@/assets/submit-hero.jpg";
 
 type FundingSource = "department" | "research" | "university";
 type SubmissionResult = { id: string; createdAt: string; routedTo: string; warning?: string };
