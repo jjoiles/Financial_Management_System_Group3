@@ -444,6 +444,7 @@ function SubmitPage() {
           </ul>
         </div>
       </aside>
+      </div>
     </div>
   );
 }
