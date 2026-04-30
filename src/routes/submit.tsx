@@ -273,7 +273,10 @@ function SubmitPage() {
 
   if (result) {
     return (
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-3xl space-y-4">
+        <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" /> Back to Overview
+        </Link>
         <div className="rounded-2xl border border-border bg-card p-8 text-center shadow-xl shadow-primary/5">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-success/10">
             <CheckCircle2 className="h-8 w-8 text-success" />
@@ -290,9 +293,12 @@ function SubmitPage() {
             <button onClick={() => setResult(null)} className="rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
               Submit another request
             </button>
-            <a href="/tracking" className="rounded-md border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
+            <Link to="/tracking" className="rounded-md border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
               View My Requests
-            </a>
+            </Link>
+            <Link to="/" className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
+              <Home className="h-4 w-4" /> Home
+            </Link>
           </div>
         </div>
       </div>
