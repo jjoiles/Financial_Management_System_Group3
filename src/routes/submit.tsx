@@ -1,9 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState, type FormEvent, type InputHTMLAttributes } from "react";
 import { z } from "zod";
-import { AlertCircle, CalendarDays, CheckCircle2, FileCheck2, Loader2, Paperclip, Route as RouteIcon, UploadCloud, Zap } from "lucide-react";
+import { AlertCircle, ArrowLeft, CalendarDays, CheckCircle2, FileCheck2, Home, Loader2, Paperclip, Route as RouteIcon, UploadCloud, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
+import submitHero from "@/assets/submit-hero.jpg";
 
 type FundingSource = "department" | "research" | "university";
 type SubmissionResult = { id: string; createdAt: string; routedTo: string; warning?: string };
@@ -272,7 +273,10 @@ function SubmitPage() {
 
   if (result) {
     return (
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-3xl space-y-4">
+        <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" /> Back to Overview
+        </Link>
         <div className="rounded-2xl border border-border bg-card p-8 text-center shadow-xl shadow-primary/5">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-success/10">
             <CheckCircle2 className="h-8 w-8 text-success" />
@@ -289,9 +293,12 @@ function SubmitPage() {
             <button onClick={() => setResult(null)} className="rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
               Submit another request
             </button>
-            <a href="/tracking" className="rounded-md border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
+            <Link to="/tracking" className="rounded-md border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
               View My Requests
-            </a>
+            </Link>
+            <Link to="/" className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
+              <Home className="h-4 w-4" /> Home
+            </Link>
           </div>
         </div>
       </div>
@@ -299,28 +306,39 @@ function SubmitPage() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-      <section className="min-w-0">
-        <div className="mb-6 overflow-hidden rounded-2xl border border-border bg-card shadow-xl shadow-primary/5">
-          <div className="grid gap-6 p-6 md:grid-cols-[1fr_15rem] md:items-center">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                <Zap className="h-3.5 w-3.5" />
-                Automated workflow enabled
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <Link to="/" className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground">
+          <ArrowLeft className="h-4 w-4" /> Back to Overview
+        </Link>
+        <Link to="/tracking" className="hidden text-sm font-medium text-primary hover:underline sm:inline">
+          View my requests →
+        </Link>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <section className="min-w-0">
+          <div className="mb-6 overflow-hidden rounded-2xl border border-border bg-card shadow-xl shadow-primary/5">
+            <div className="grid gap-6 p-6 md:grid-cols-[1fr_15rem] md:items-center">
+              <div>
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                  <Zap className="h-3.5 w-3.5" />
+                  Automated workflow enabled
+                </div>
+                <h1 className="text-3xl font-bold text-card-foreground">New financial request</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Submit validated funding requests with conditional fields, supporting files, generated metadata, and immediate routing.</p>
               </div>
-              <h1 className="text-3xl font-bold text-card-foreground">New financial request</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Submit validated funding requests with conditional fields, supporting files, generated metadata, and immediate routing.</p>
+              <img src={submitHero} alt="University finance team submitting a request" width={1024} height={768} loading="lazy" className="hidden h-40 w-full rounded-xl object-cover md:block" />
             </div>
-            <div className="rounded-2xl border border-border bg-background p-4">
-              <RouteIcon className="mb-3 h-7 w-7 text-primary" />
-              <div className="space-y-2 text-xs text-muted-foreground">
+            <div className="border-t border-border bg-background/60 px-6 py-3">
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <RouteIcon className="h-4 w-4 text-primary" />
                 <FlowStep text="Validate" active />
                 <FlowStep text="Attach" active />
                 <FlowStep text="Route" active />
               </div>
             </div>
           </div>
-        </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -426,6 +444,7 @@ function SubmitPage() {
           </ul>
         </div>
       </aside>
+      </div>
     </div>
   );
 }
