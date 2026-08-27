@@ -21,7 +21,7 @@ export const Route = createFileRoute("/submit")({
 });
 
 const requestSchema = z.object({
-  requesterEmail: z.string().trim().email("Enter a valid university email."),
+  requesterEmail: z.string().trim().email("Enter a valid email address.").refine((email) => email.endsWith("@howard.edu"), { message: "Must be a Howard University email (@howard.edu)." }),
   department: z.string().trim().min(2, "Department is required.").max(80),
   fundingSource: z.enum(["department", "research", "university"], { required_error: "Select a funding source." }),
   amount: z.coerce.number().positive("Amount must be greater than zero.").max(9999999, "Amount is too large."),
@@ -29,7 +29,10 @@ const requestSchema = z.object({
   priority: z.enum(["low", "medium", "high"]),
   description: z.string().trim().min(1, "Business justification is required.").max(10000, "Business justification is too long."),
   grantNumber: z.string().trim().optional(),
-  principalInvestigator: z.string().trim().optional(),
+  principalInvestigator: z.string().trim().optional().transform((val) => {
+    if (!val) return val;
+    return /^dr\.?\s/i.test(val) ? val : `Dr. ${val}`;
+  }),
   universityProgram: z.string().trim().optional(),
 }).superRefine((data, ctx) => {
   const neededBy = new Date(`${data.neededBy}T00:00:00`);
@@ -39,7 +42,11 @@ const requestSchema = z.object({
     ctx.addIssue({ code: "custom", path: ["neededBy"], message: "Choose today or a future date." });
   }
   if (data.fundingSource === "research") {
-    if (!data.grantNumber) ctx.addIssue({ code: "custom", path: ["grantNumber"], message: "Grant number is required for research funding." });
+    if (!data.grantNumber) {
+      ctx.addIssue({ code: "custom", path: ["grantNumber"], message: "Grant number is required for research funding." });
+    } else if (data.grantNumber.length < 3) {
+      ctx.addIssue({ code: "custom", path: ["grantNumber"], message: "Grant number must be at least 3 characters." });
+    }
     if (!data.principalInvestigator) ctx.addIssue({ code: "custom", path: ["principalInvestigator"], message: "PI name is required for research funding." });
   }
   if (data.fundingSource === "university" && !data.universityProgram) {
@@ -343,7 +350,7 @@ function SubmitPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="grid gap-4 md:grid-cols-2">
-              <Input name="requesterEmail" label="Requester email" type="email" defaultValue={defaultEmail} placeholder="name@university.edu" error={errors.requesterEmail} />
+              <Input name="requesterEmail" label="Requester email" type="email" defaultValue={defaultEmail} placeholder="name@howard.edu" error={errors.requesterEmail} />
               <Input name="department" label="Department" defaultValue={auth.profile?.department ?? ""} placeholder="Chemistry" error={errors.department} />
               <Input name="amount" label="Amount (USD)" type="number" min="0" step="0.01" placeholder="0.00" error={errors.amount} />
               <label className="block">
@@ -439,7 +446,7 @@ function SubmitPage() {
           <h2 className="mt-3 text-base font-bold text-card-foreground">Validation rules</h2>
           <ul className="mt-3 space-y-2 text-xs leading-5 text-muted-foreground">
             <li>• Required fields are checked before routing.</li>
-            <li>• Email, amount, and date formats are enforced.</li>
+            <li>• Email must be a Howard University address (@howard.edu).</li>
             <li>• Research and university funds reveal only relevant fields.</li>
           </ul>
         </div>

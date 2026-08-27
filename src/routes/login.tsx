@@ -17,7 +17,7 @@ function LoginPage() {
   const auth = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [email, setEmail] = useState("faculty@university.edu");
+  const [email, setEmail] = useState("faculty@howard.edu");
   const [password, setPassword] = useState("SecurePass123!");
   const [displayName, setDisplayName] = useState("Dr. Sarah Chen");
   const [department, setDepartment] = useState("Chemistry");
