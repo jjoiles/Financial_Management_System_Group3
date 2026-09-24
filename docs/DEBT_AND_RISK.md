@@ -334,10 +334,120 @@
 
 ## Part 3: Backlog Integration
 
-Based on the audit above, the top 3 items to convert into GitHub Issues on the project board are:
+The following are the top 3 technical debt items converted into formal GitHub Issue drafts, ready to be added to the project board. Each includes LLM-generated acceptance criteria and explicit mapping to VIBE coding principles.
 
-1. **Item 5 — `.env` File Not Gitignored and Hardcoded Demo Credentials** → Create an issue tagged `technical-debt` + `security`. This is the most immediately actionable and highest-risk item.
+---
 
-2. **Item 2 — Zero Automated Test Coverage** → Create an issue tagged `technical-debt`. This blocks the ability to safely refactor any other debt item.
+### Issue 1 of 3
 
-3. **Item 1 — Monolithic Route Files with No Separation of Concerns** → Create an issue tagged `refactor`. This is the foundational architectural change that enables all future feature work.
+> **Title:** Fix `.env` exposure and remove hardcoded demo credentials from login page
+>
+> **Labels:** `technical-debt`, `security`
+>
+> **Assignee:** *(assign to team member responsible for DevOps/config)*
+
+**Description:**
+
+The `.env` file containing Supabase project URLs and publishable keys is not listed in `.gitignore`, meaning it is at risk of being committed to the public GitHub repository. Additionally, the login page (`src/routes/login.tsx`, lines 20–23) ships with pre-filled demo credentials hardcoded as React state defaults: email `faculty@howard.edu`, password `SecurePass123!`, display name `Dr. Sarah Chen`, and department `Chemistry`. These credentials are visible in the source code and pre-populated in the login form for any visitor. No `.env.example` template exists for onboarding new developers.
+
+**Acceptance Criteria:**
+
+- [ ] `.env` is added to `.gitignore`
+- [ ] `git rm --cached .env` has been run to remove `.env` from git tracking (if previously committed)
+- [ ] A `.env.example` file exists in the repo root with placeholder values and inline comments explaining each variable (e.g., `VITE_SUPABASE_URL="https://your-project.supabase.co"`)
+- [ ] The login page (`src/routes/login.tsx`) initializes `email`, `password`, `displayName`, and `department` state to empty strings (`""`) instead of demo values
+- [ ] Login form inputs use `placeholder` attributes to show example text (e.g., `placeholder="name@howard.edu"`) rather than pre-filled values
+- [ ] If Supabase keys were previously exposed in git history, keys have been rotated in the Supabase dashboard
+- [ ] The unused `VITE_SUPABASE_PROJECT_ID` variable is removed from `.env`
+- [ ] A team member has verified by cloning the repo fresh and confirming `.env` is not included and `.env.example` provides clear setup instructions
+
+**VIBE Mapping:**
+
+| VIBE Principle | How This Issue Maps |
+|---|---|
+| **Verify** | This issue was identified by using an LLM (Google Antigravity) to audit the `.gitignore` file and scan for hardcoded strings in `login.tsx`. The AI flagged that `.env` was missing from `.gitignore` and that `SecurePass123!` was a hardcoded credential — a finding the team had not caught during manual review. This demonstrates using AI as a verification tool to catch security oversights in AI-generated code. |
+| **Improve** | The original Lovable.dev-generated code prioritized a visually complete demo over production security. Pre-filling credentials made the demo look functional instantly but created a security liability. This issue improves the codebase by removing demo shortcuts and replacing them with proper developer onboarding patterns (`.env.example`). |
+| **Build** | The acceptance criteria include a verification step (fresh clone test) that can be automated in CI — ensuring this issue stays fixed and doesn't regress. |
+| **Execute** | This is a 30-minute fix with immediate security impact. It is the highest-priority item because it addresses an active exposure risk with minimal effort. |
+
+---
+
+### Issue 2 of 3
+
+> **Title:** Set up automated test infrastructure and write initial test suite for Zod validation schema
+>
+> **Labels:** `technical-debt`
+>
+> **Assignee:** *(assign to team member responsible for testing/quality)*
+
+**Description:**
+
+The entire codebase has zero automated tests. No test files (`.test.ts`, `.test.tsx`, `.spec.ts`) exist in `src/`. No test runner is configured — `package.json` has no test dependencies (Vitest, Jest, Testing Library) and no `test` script. The Zod validation schema in `src/routes/submit.tsx` (lines 23–55) enforces critical business rules — Howard University email domains, conditional research/university fields, PI name auto-prepend, date constraints, and amount limits — but none of these have ever been verified by automated tests. The auth flow, MFA enrollment, role-based access, and data-fetching hooks are similarly untested. Without tests, no other technical debt item can be safely refactored.
+
+**Acceptance Criteria:**
+
+- [ ] `vitest` is installed as a dev dependency
+- [ ] `@testing-library/react` and `@testing-library/jest-dom` are installed as dev dependencies
+- [ ] A `"test": "vitest"` script exists in `package.json`
+- [ ] A `vitest.config.ts` (or equivalent config in `vite.config.ts`) is created with proper path alias resolution (`@/` → `src/`)
+- [ ] At least 10 unit tests exist for the Zod `requestSchema` covering:
+  - [ ] Valid submission with all required fields passes validation
+  - [ ] Non-`@howard.edu` email is rejected
+  - [ ] Email with `@howard.edu` is accepted
+  - [ ] Amount of 0 or negative is rejected
+  - [ ] Amount exceeding 9,999,999 is rejected
+  - [ ] `neededBy` date in the past is rejected
+  - [ ] Funding source "research" without `grantNumber` is rejected
+  - [ ] Funding source "research" with `grantNumber` and `principalInvestigator` passes
+  - [ ] `principalInvestigator` without "Dr." prefix gets auto-prepended to "Dr. [name]"
+  - [ ] `principalInvestigator` already starting with "Dr." is not double-prepended
+- [ ] At least 2 unit tests exist for the `toEnriched` data mapper in `src/lib/requests-data.ts`
+- [ ] All tests pass when running `npm test`
+- [ ] A CI workflow (`.github/workflows/ci.yml`) runs `npm test` on every pull request
+
+**VIBE Mapping:**
+
+| VIBE Principle | How This Issue Maps |
+|---|---|
+| **Verify** | This is the most direct application of the Verify principle. The Lovable.dev AI generated a Zod schema with complex validation rules (email domain checks, conditional fields, auto-transforms), but none of these were ever verified to work correctly. Writing tests for the schema is literally "verifying" the AI's output — confirming that `@howard.edu` enforcement actually rejects `@gmail.com`, that the "Dr." prepend doesn't double-prepend, and that conditional fields are truly required when they should be. Without tests, the team is blindly trusting AI-generated validation logic for financial documents. |
+| **Improve** | The AI generated validation code but no tests. Adding a test suite improves the project's maturity from "prototype that might work" to "verified system with regression protection." It also forces the team to understand the validation rules the AI wrote, rather than accepting them on faith. |
+| **Build** | The CI workflow ensures every future PR is automatically tested. This creates a safety net for all subsequent development — no code reaches `main` without passing the test suite. This is foundational infrastructure that must exist before any other refactoring can proceed safely. |
+| **Execute** | This issue unblocks every other technical debt item. Monolithic route refactoring (Issue 3), prototype fallback removal, and service layer extraction all require tests to verify that behavior is preserved during refactoring. Without tests, refactoring is gambling. |
+
+---
+
+### Issue 3 of 3
+
+> **Title:** Extract service layer from monolithic `submit.tsx` (485 lines) into separate modules
+>
+> **Labels:** `refactor`
+>
+> **Assignee:** *(assign to team member responsible for architecture)*
+
+**Description:**
+
+`src/routes/submit.tsx` is a 485-line monolithic file that combines the Zod validation schema, business routing logic, random ID generation, database insertion with exponential-backoff retry (6 attempts, up to 8s delays), error classification heuristics, localStorage prototype fallback, Supabase file storage uploads, workflow event creation, and four inline UI components (`Input`, `ErrorText`, `Meta`, `FlowStep`) — all in a single file. There is no service layer, no custom hooks for data mutations, and no separation between UI rendering and business logic. Every route in the application (`login.tsx`, `requests.tsx`, `tracking.tsx`) follows the same pattern of directly calling `supabase.from(...)` inside event handlers. This makes the code impossible to unit test, difficult to debug, and risky to modify — any change to submission logic requires editing a 485-line file where a misplaced bracket could break the entire form.
+
+**Acceptance Criteria:**
+
+- [ ] The Zod validation schema (`requestSchema` and related types) is extracted to `src/schemas/request-schema.ts`
+- [ ] Database operations (`insertFinancialRequest`, retry logic) are extracted to `src/services/requests.ts`
+- [ ] The `insertFinancialRequest` function accepts a properly typed Supabase client (not `any`)
+- [ ] Error classification utilities (`isTransientBackendError`, `getSubmitErrorMessage`, `getPrototypeFallbackReason`) are extracted to `src/lib/error-utils.ts`
+- [ ] The localStorage prototype fallback functions (`savePrototypeRequest`, `savePrototypeAttachments`) are extracted to `src/lib/prototype-fallback.ts` (to be deleted in a future issue once RLS is fixed)
+- [ ] The routing map (`routingMap`) and ID generator (`createRequestNumber`) are extracted to `src/lib/request-utils.ts`
+- [ ] The form submission flow is encapsulated in a custom hook `useSubmitRequest` in `src/hooks/use-submit-request.ts`
+- [ ] `src/routes/submit.tsx` contains only JSX rendering and calls `useSubmitRequest()` — no direct Supabase calls, no business logic, no utility functions
+- [ ] `submit.tsx` is under 200 lines after extraction
+- [ ] All existing tests (from Issue 2) still pass after the refactoring
+- [ ] The form submission flow works identically from the user's perspective (same validation messages, same success/error behavior)
+- [ ] Inline UI components (`Input`, `ErrorText`, `Meta`, `FlowStep`) are either moved to `src/components/` or replaced with the existing shadcn/ui components from `src/components/ui/`
+
+**VIBE Mapping:**
+
+| VIBE Principle | How This Issue Maps |
+|---|---|
+| **Verify** | The monolithic architecture was identified by using an LLM to audit file sizes and analyze the structure of `submit.tsx`. The AI flagged that 485 lines of mixed concerns in a single file violates separation of concerns — something the team accepted from Lovable.dev without questioning. Post-refactor, each extracted module can be independently verified with unit tests (e.g., testing `insertFinancialRequest` without rendering any UI). |
+| **Improve** | This is the core "Improve" task for the semester. The AI-generated architecture optimized for rapid prototyping (everything in one file = fast to generate), but this structure doesn't scale for a team of 5+ developers working on different features simultaneously. Extracting a service layer transforms the codebase from "AI prototype" to "maintainable production system." |
+| **Build** | The extracted modules create clear API boundaries: `schemas/` for validation, `services/` for data access, `hooks/` for stateful logic, `routes/` for UI. Future features (F7: Workflow, F8: Routing, F9: Tracking) can be built against these clean interfaces rather than wedged into a monolithic file. Each module has a single responsibility and can evolve independently. |
+| **Execute** | This issue depends on Issue 2 (tests must exist first to verify behavior is preserved during refactoring). Once complete, it accelerates all future development — new features are built by adding a service function, a hook, and a route component rather than inserting 50 lines into the middle of a 485-line file. Estimated effort: 4–6 hours for a developer familiar with the codebase. |
