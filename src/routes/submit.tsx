@@ -5,9 +5,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import submitHero from "@/assets/submit-hero.jpg";
 import type { FormErrors, FundingSource } from "@/lib/validation/request-schema";
+import { routeRequest, type RoutingDecision } from "@/lib/routing/engine";
 import { buildValidatedPayload, isDatabaseValidationError, mapDatabaseValidationError, validateSubmission } from "@/lib/validation/gateways";
 
-type SubmissionResult = { id: string; createdAt: string; routedTo: string; warning?: string };
+type SubmissionResult = { id: string; createdAt: string; routedTo: string; routing: RoutingDecision; warning?: string };
 type SavedRequest = { id: string; request_number: string; created_at: string; prototype?: boolean };
 
 export const Route = createFileRoute("/submit")({
@@ -19,12 +20,6 @@ export const Route = createFileRoute("/submit")({
     ],
   }),
 });
-
-const routingMap: Record<FundingSource, string> = {
-  department: "Department Budget Reviewer",
-  research: "Research Administration",
-  university: "Provost Finance Office",
-};
 
 const transientBackendCodes = new Set(["PGRST000", "PGRST001", "PGRST002"]);
 
@@ -127,6 +122,7 @@ function SubmitPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<SubmissionResult | null>(null);
+  const [preview, setPreview] = useState<RoutingDecision | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitError, setSubmitError] = useState("");
   const defaultEmail = auth.user?.email ?? "";
@@ -155,7 +151,9 @@ function SubmitPage() {
     setSubmitting(true);
 
     try {
-      const routedTo = routingMap[parsed.data.fundingSource];
+      // F8: decide the queue and approval chain from the validated input
+      const routing = routeRequest(parsed.data);
+      const routedTo = routing.primaryLabel;
       const client = supabase as any;
       const requestNumber = createRequestNumber();
       const createdAt = new Date().toISOString();
@@ -166,7 +164,7 @@ function SubmitPage() {
         {
           workflow_triggered_at: createdAt,
           routed_to: routedTo,
-          metadata: { source: "FinReq portal", automation: "Power Automate equivalent", attachmentCount: files.length },
+          metadata: { source: "FinReq portal", automation: "Power Automate equivalent", attachmentCount: files.length, routing },
         },
       );
       if (!payloadResult.ok) {
@@ -227,7 +225,7 @@ function SubmitPage() {
             actor_user_id: auth.user.id,
             event_type: "workflow_triggered",
             message: `Automated routing triggered to ${routedTo}.`,
-            metadata: { requestNumber: inserted.request_number, connector: "Power Automate simulation" },
+            metadata: { requestNumber: inserted.request_number, connector: "Power Automate simulation", approvalChain: routing.approvalChain.map((step) => step.label), flags: routing.flags },
           });
           if (workflow.error && !warning) warning = "Your request was saved. Power Automate is not connected yet, so the workflow trigger was simulated.";
         } catch {
@@ -235,10 +233,11 @@ function SubmitPage() {
         }
       }
 
-      setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo, warning });
+      setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo, routing, warning });
       form.reset();
       setFiles([]);
       setFundingSource("");
+      setPreview(null);
     } catch (err) {
       setSubmitError(getSubmitErrorMessage(err));
     } finally {
@@ -264,6 +263,7 @@ function SubmitPage() {
             <Meta label="Timestamp" value={new Date(result.createdAt).toLocaleString()} />
             <Meta label="Routed to" value={result.routedTo} />
           </div>
+          <ApprovalChain routing={result.routing} className="mt-4 text-left" />
           <div className="mt-7 flex flex-col items-center justify-center gap-2 sm:flex-row">
             <button onClick={() => setResult(null)} className="rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
               Submit another request
@@ -315,7 +315,7 @@ function SubmitPage() {
             </div>
           </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} onChange={(event) => setPreview(previewRouting(event.currentTarget))} className="space-y-5">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="grid gap-4 md:grid-cols-2">
               <Input name="requesterEmail" label="Requester email" type="email" defaultValue={defaultEmail} placeholder="name@howard.edu" error={errors.requesterEmail} />
@@ -392,7 +392,7 @@ function SubmitPage() {
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
               Submit and trigger workflow
             </button>
-            <button type="reset" onClick={() => { setFundingSource(""); setFiles([]); setErrors({}); setSubmitError(""); }} className="rounded-md border border-border bg-background px-6 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
+            <button type="reset" onClick={() => { setFundingSource(""); setFiles([]); setErrors({}); setSubmitError(""); setPreview(null); }} className="rounded-md border border-border bg-background px-6 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
               Clear form
             </button>
           </div>
@@ -406,8 +406,9 @@ function SubmitPage() {
           <div className="mt-4 space-y-3 text-sm">
             <Meta label="Request ID" value="FR-YYYY-XXXXXX" />
             <Meta label="Timestamp" value="At submission" />
-            <Meta label="Workflow" value={fundingSource ? routingMap[fundingSource] : "Based on funding source"} />
+            <Meta label="Workflow" value={preview ? preview.primaryLabel : "Based on funding source and amount"} />
           </div>
+          {preview && <ApprovalChain routing={preview} className="mt-4" />}
         </div>
         <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <AlertCircle className="h-7 w-7 text-warning" />
@@ -450,4 +451,40 @@ function Meta({ label, value }: { label: string; value: string }) {
 
 function FlowStep({ text, active }: { text: string; active: boolean }) {
   return <div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${active ? "bg-success" : "bg-muted"}`} />{text}</div>;
+}
+
+// Live routing preview for the sidebar. Uses whatever the user has typed so
+// far; returns null until funding source and amount are usable.
+function previewRouting(form: HTMLFormElement): RoutingDecision | null {
+  const data = new FormData(form);
+  const fundingSource = String(data.get("fundingSource") ?? "");
+  const amount = Number(data.get("amount"));
+  if (!["department", "research", "university"].includes(fundingSource) || !(amount > 0)) return null;
+  const priority = String(data.get("priority") ?? "medium");
+  return routeRequest({
+    fundingSource: fundingSource as FundingSource,
+    amount,
+    priority: (["low", "medium", "high"].includes(priority) ? priority : "medium") as "low" | "medium" | "high",
+    neededBy: String(data.get("neededBy") || "9999-12-31"),
+  });
+}
+
+function ApprovalChain({ routing, className = "" }: { routing: RoutingDecision; className?: string }) {
+  return (
+    <div className={`rounded-lg border border-border bg-background p-3 ${className}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Approval chain</p>
+        {routing.flags.includes("expedited") && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning">Expedited</span>}
+        {routing.flags.includes("high_value") && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">High value</span>}
+      </div>
+      <ol className="mt-2 space-y-1.5">
+        {routing.approvalChain.map((step) => (
+          <li key={step.queue} className="text-xs text-foreground">
+            <span className="font-semibold">{step.step}. {step.label}</span>
+            <span className="block text-muted-foreground">{step.reason}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
 }
