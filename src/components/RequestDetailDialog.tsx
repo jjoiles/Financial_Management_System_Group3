@@ -42,6 +42,23 @@ export default function RequestDetailDialog({ request, onClose }: { request: Enr
             {request.routedTo && <DetailRow icon={Paperclip} label="Routed To" value={request.routedTo} />}
           </div>
 
+          {request.routing && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Approval Chain</p>
+              <ol className="space-y-2 rounded-lg border border-border bg-background p-4">
+                {request.routing.approvalChain.map((step) => (
+                  <li key={step.queue} className="text-sm text-foreground">
+                    <span className="font-medium">{step.step}. {step.label}</span>
+                    <span className="block text-xs text-muted-foreground">{step.reason}</span>
+                  </li>
+                ))}
+                {request.routing.flags.includes("expedited") && (
+                  <li className="text-xs font-semibold text-warning">Expedited</li>
+                )}
+              </ol>
+            </div>
+          )}
+
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Description</p>
             <p className="whitespace-pre-wrap rounded-lg border border-border bg-background p-4 text-sm leading-6 text-foreground">

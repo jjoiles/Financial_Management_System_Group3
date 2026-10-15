@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { RequestStatus, FundingType, FinancialRequest } from "@/lib/mock-data";
+import { readRoutingDecision, type RoutingDecision } from "@/lib/routing/engine";
 
 const PROTOTYPE_KEY = "prototype-financial-requests";
 
@@ -45,6 +46,7 @@ export type EnrichedRequest = FinancialRequest & {
   email: string;
   neededBy: string;
   routedTo: string | null;
+  routing: RoutingDecision | null;
   prototype: boolean;
 };
 
@@ -65,6 +67,7 @@ const toEnriched = (row: DbRow, fallbackName?: string): EnrichedRequest => ({
   priority: priorityMap[row.priority],
   neededBy: row.needed_by,
   routedTo: row.routed_to,
+  routing: readRoutingDecision(row.metadata),
   prototype: !!row.prototype,
 });
 

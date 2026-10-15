@@ -1,13 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState, type FormEvent, type InputHTMLAttributes } from "react";
-import { z } from "zod";
 import { AlertCircle, ArrowLeft, CalendarDays, CheckCircle2, FileCheck2, Home, Loader2, Paperclip, Route as RouteIcon, UploadCloud, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import submitHero from "@/assets/submit-hero.jpg";
+import type { FormErrors, FundingSource } from "@/lib/validation/request-schema";
+import { routeRequest, type RoutingDecision } from "@/lib/routing/engine";
+import { buildValidatedPayload, isDatabaseValidationError, mapDatabaseValidationError, validateSubmission } from "@/lib/validation/gateways";
 
-type FundingSource = "department" | "research" | "university";
-type SubmissionResult = { id: string; createdAt: string; routedTo: string; warning?: string };
+type SubmissionResult = { id: string; createdAt: string; routedTo: string; routing: RoutingDecision; warning?: string };
 type SavedRequest = { id: string; request_number: string; created_at: string; prototype?: boolean };
 
 export const Route = createFileRoute("/submit")({
@@ -19,48 +20,6 @@ export const Route = createFileRoute("/submit")({
     ],
   }),
 });
-
-const requestSchema = z.object({
-  requesterEmail: z.string().trim().email("Enter a valid email address.").refine((email) => email.endsWith("@howard.edu"), { message: "Must be a Howard University email (@howard.edu)." }),
-  department: z.string().trim().min(2, "Department is required.").max(80),
-  fundingSource: z.enum(["department", "research", "university"], { required_error: "Select a funding source." }),
-  amount: z.coerce.number().positive("Amount must be greater than zero.").max(9999999, "Amount is too large."),
-  neededBy: z.string().min(1, "Needed-by date is required."),
-  priority: z.enum(["low", "medium", "high"]),
-  description: z.string().trim().min(1, "Business justification is required.").max(10000, "Business justification is too long."),
-  grantNumber: z.string().trim().optional(),
-  principalInvestigator: z.string().trim().optional().transform((val) => {
-    if (!val) return val;
-    return /^dr\.?\s/i.test(val) ? val : `Dr. ${val}`;
-  }),
-  universityProgram: z.string().trim().optional(),
-}).superRefine((data, ctx) => {
-  const neededBy = new Date(`${data.neededBy}T00:00:00`);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (neededBy < today) {
-    ctx.addIssue({ code: "custom", path: ["neededBy"], message: "Choose today or a future date." });
-  }
-  if (data.fundingSource === "research") {
-    if (!data.grantNumber) {
-      ctx.addIssue({ code: "custom", path: ["grantNumber"], message: "Grant number is required for research funding." });
-    } else if (data.grantNumber.length < 3) {
-      ctx.addIssue({ code: "custom", path: ["grantNumber"], message: "Grant number must be at least 3 characters." });
-    }
-    if (!data.principalInvestigator) ctx.addIssue({ code: "custom", path: ["principalInvestigator"], message: "PI name is required for research funding." });
-  }
-  if (data.fundingSource === "university" && !data.universityProgram) {
-    ctx.addIssue({ code: "custom", path: ["universityProgram"], message: "Program name is required for university funding." });
-  }
-});
-
-type FormErrors = Partial<Record<keyof z.infer<typeof requestSchema>, string>>;
-
-const routingMap: Record<FundingSource, string> = {
-  department: "Department Budget Reviewer",
-  research: "Research Administration",
-  university: "Provost Finance Office",
-};
 
 const transientBackendCodes = new Set(["PGRST000", "PGRST001", "PGRST002"]);
 
@@ -163,6 +122,7 @@ function SubmitPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<SubmissionResult | null>(null);
+  const [preview, setPreview] = useState<RoutingDecision | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitError, setSubmitError] = useState("");
   const defaultEmail = auth.user?.email ?? "";
@@ -177,10 +137,11 @@ function SubmitPage() {
 
     const form = event.currentTarget;
     const data = Object.fromEntries(new FormData(form).entries());
-    const parsed = requestSchema.safeParse(data);
+    // F22 gateway 1: form validation
+    const parsed = validateSubmission(data);
 
-    if (!parsed.success) {
-      setErrors(Object.fromEntries(parsed.error.issues.map((issue) => [issue.path[0], issue.message])) as FormErrors);
+    if (!parsed.ok) {
+      setErrors(parsed.errors);
       setSubmitError("");
       return;
     }
@@ -190,29 +151,27 @@ function SubmitPage() {
     setSubmitting(true);
 
     try {
-      const routedTo = routingMap[parsed.data.fundingSource];
+      // F8: decide the queue and approval chain from the validated input
+      const routing = routeRequest(parsed.data);
+      const routedTo = routing.primaryLabel;
       const client = supabase as any;
       const requestNumber = createRequestNumber();
       const createdAt = new Date().toISOString();
-      const requestPayload = {
-        user_id: auth.user.id,
-        request_number: requestNumber,
-        title: parsed.data.description.slice(0, 120) || "Financial request",
-        requester_email: parsed.data.requesterEmail,
-        department: parsed.data.department,
-        funding_source: parsed.data.fundingSource,
-        amount: parsed.data.amount,
-        needed_by: parsed.data.neededBy,
-        priority: parsed.data.priority,
-        description: parsed.data.description,
-        grant_number: parsed.data.grantNumber || null,
-        principal_investigator: parsed.data.principalInvestigator || null,
-        university_program: parsed.data.universityProgram || null,
-        status: "submitted",
-        workflow_triggered_at: createdAt,
-        routed_to: routedTo,
-        metadata: { source: "FinReq portal", automation: "Power Automate equivalent", attachmentCount: files.length },
-      };
+      // F22 gateway 2: normalize and re-check the row before it leaves the browser
+      const payloadResult = buildValidatedPayload(
+        parsed.data,
+        { userId: auth.user.id, requestNumber },
+        {
+          workflow_triggered_at: createdAt,
+          routed_to: routedTo,
+          metadata: { source: "FinReq portal", automation: "Power Automate equivalent", attachmentCount: files.length, routing },
+        },
+      );
+      if (!payloadResult.ok) {
+        setErrors(payloadResult.errors);
+        return;
+      }
+      const requestPayload = payloadResult.data;
 
       let warning = "";
       let inserted: SavedRequest;
@@ -220,6 +179,13 @@ function SubmitPage() {
       try {
         inserted = await insertFinancialRequest(client, requestPayload, requestNumber);
       } catch (error) {
+        // F22 gateway 3: the database rejected the data. Show the field error
+        // instead of silently saving an invalid request in prototype mode.
+        if (isDatabaseValidationError(error)) {
+          setErrors(mapDatabaseValidationError(error) ?? {});
+          setSubmitError("The server rejected one or more fields. Review the highlighted fields.");
+          return;
+        }
         inserted = savePrototypeRequest(requestPayload, requestNumber, createdAt);
         savePrototypeAttachments(inserted.id, auth.user.id, files);
         const reason = getPrototypeFallbackReason(error);
@@ -259,7 +225,7 @@ function SubmitPage() {
             actor_user_id: auth.user.id,
             event_type: "workflow_triggered",
             message: `Automated routing triggered to ${routedTo}.`,
-            metadata: { requestNumber: inserted.request_number, connector: "Power Automate simulation" },
+            metadata: { requestNumber: inserted.request_number, connector: "Power Automate simulation", approvalChain: routing.approvalChain.map((step) => step.label), flags: routing.flags },
           });
           if (workflow.error && !warning) warning = "Your request was saved. Power Automate is not connected yet, so the workflow trigger was simulated.";
         } catch {
@@ -267,10 +233,11 @@ function SubmitPage() {
         }
       }
 
-      setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo, warning });
+      setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo, routing, warning });
       form.reset();
       setFiles([]);
       setFundingSource("");
+      setPreview(null);
     } catch (err) {
       setSubmitError(getSubmitErrorMessage(err));
     } finally {
@@ -296,6 +263,7 @@ function SubmitPage() {
             <Meta label="Timestamp" value={new Date(result.createdAt).toLocaleString()} />
             <Meta label="Routed to" value={result.routedTo} />
           </div>
+          <ApprovalChain routing={result.routing} className="mt-4 text-left" />
           <div className="mt-7 flex flex-col items-center justify-center gap-2 sm:flex-row">
             <button onClick={() => setResult(null)} className="rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
               Submit another request
@@ -347,7 +315,7 @@ function SubmitPage() {
             </div>
           </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} onChange={(event) => setPreview(previewRouting(event.currentTarget))} className="space-y-5">
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div className="grid gap-4 md:grid-cols-2">
               <Input name="requesterEmail" label="Requester email" type="email" defaultValue={defaultEmail} placeholder="name@howard.edu" error={errors.requesterEmail} />
@@ -424,7 +392,7 @@ function SubmitPage() {
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
               Submit and trigger workflow
             </button>
-            <button type="reset" onClick={() => { setFundingSource(""); setFiles([]); setErrors({}); setSubmitError(""); }} className="rounded-md border border-border bg-background px-6 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
+            <button type="reset" onClick={() => { setFundingSource(""); setFiles([]); setErrors({}); setSubmitError(""); setPreview(null); }} className="rounded-md border border-border bg-background px-6 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
               Clear form
             </button>
           </div>
@@ -438,8 +406,9 @@ function SubmitPage() {
           <div className="mt-4 space-y-3 text-sm">
             <Meta label="Request ID" value="FR-YYYY-XXXXXX" />
             <Meta label="Timestamp" value="At submission" />
-            <Meta label="Workflow" value={fundingSource ? routingMap[fundingSource] : "Based on funding source"} />
+            <Meta label="Workflow" value={preview ? preview.primaryLabel : "Based on funding source and amount"} />
           </div>
+          {preview && <ApprovalChain routing={preview} className="mt-4" />}
         </div>
         <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <AlertCircle className="h-7 w-7 text-warning" />
@@ -448,6 +417,7 @@ function SubmitPage() {
             <li>• Required fields are checked before routing.</li>
             <li>• Email must be a Howard University address (@howard.edu).</li>
             <li>• Research and university funds reveal only relevant fields.</li>
+            <li>• The same rules are re-checked by the database before saving.</li>
           </ul>
         </div>
       </aside>
@@ -481,4 +451,40 @@ function Meta({ label, value }: { label: string; value: string }) {
 
 function FlowStep({ text, active }: { text: string; active: boolean }) {
   return <div className="flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${active ? "bg-success" : "bg-muted"}`} />{text}</div>;
+}
+
+// Live routing preview for the sidebar. Uses whatever the user has typed so
+// far; returns null until funding source and amount are usable.
+function previewRouting(form: HTMLFormElement): RoutingDecision | null {
+  const data = new FormData(form);
+  const fundingSource = String(data.get("fundingSource") ?? "");
+  const amount = Number(data.get("amount"));
+  if (!["department", "research", "university"].includes(fundingSource) || !(amount > 0)) return null;
+  const priority = String(data.get("priority") ?? "medium");
+  return routeRequest({
+    fundingSource: fundingSource as FundingSource,
+    amount,
+    priority: (["low", "medium", "high"].includes(priority) ? priority : "medium") as "low" | "medium" | "high",
+    neededBy: String(data.get("neededBy") || "9999-12-31"),
+  });
+}
+
+function ApprovalChain({ routing, className = "" }: { routing: RoutingDecision; className?: string }) {
+  return (
+    <div className={`rounded-lg border border-border bg-background p-3 ${className}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Approval chain</p>
+        {routing.flags.includes("expedited") && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning">Expedited</span>}
+        {routing.flags.includes("high_value") && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">High value</span>}
+      </div>
+      <ol className="mt-2 space-y-1.5">
+        {routing.approvalChain.map((step) => (
+          <li key={step.queue} className="text-xs text-foreground">
+            <span className="font-semibold">{step.step}. {step.label}</span>
+            <span className="block text-muted-foreground">{step.reason}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
 }
