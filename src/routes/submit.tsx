@@ -6,9 +6,16 @@ import { useAuth } from "@/lib/auth-context";
 import submitHero from "@/assets/submit-hero.jpg";
 import type { FormErrors, FundingSource } from "@/lib/validation/request-schema";
 import { routeRequest, type RoutingDecision } from "@/lib/routing/engine";
+import { initializeWorkflow, type WorkflowMode } from "@/lib/workflow/initialize-workflow";
 import { buildValidatedPayload, isDatabaseValidationError, mapDatabaseValidationError, validateSubmission } from "@/lib/validation/gateways";
 
-type SubmissionResult = { id: string; createdAt: string; routedTo: string; routing: RoutingDecision; warning?: string };
+type SubmissionResult = { id: string; createdAt: string; routedTo: string; routing: RoutingDecision; workflow: string; warning?: string };
+
+const workflowModeLabel: Record<WorkflowMode, string> = {
+  power_automate: "Started in Power Automate",
+  simulated: "Simulated (flow not connected)",
+  failed: "Not started",
+};
 type SavedRequest = { id: string; request_number: string; created_at: string; prototype?: boolean };
 
 export const Route = createFileRoute("/submit")({
@@ -162,9 +169,8 @@ function SubmitPage() {
         parsed.data,
         { userId: auth.user.id, requestNumber },
         {
-          workflow_triggered_at: createdAt,
           routed_to: routedTo,
-          metadata: { source: "FinReq portal", automation: "Power Automate equivalent", attachmentCount: files.length, routing },
+          metadata: { source: "FinReq portal", automation: "Power Automate", attachmentCount: files.length, routing },
         },
       );
       if (!payloadResult.ok) {
@@ -218,22 +224,29 @@ function SubmitPage() {
         }
       }
 
+      // F7: start the Power Automate workflow on the server. The server
+      // re-checks routing and records the outcome in workflow_events.
+      let workflowLabel = "Simulated (prototype mode)";
+      let finalRoutedTo = routedTo;
       if (!inserted.prototype) {
         try {
-          const workflow = await client.from("workflow_events").insert({
-            request_id: inserted.id,
-            actor_user_id: auth.user.id,
-            event_type: "workflow_triggered",
-            message: `Automated routing triggered to ${routedTo}.`,
-            metadata: { requestNumber: inserted.request_number, connector: "Power Automate simulation", approvalChain: routing.approvalChain.map((step) => step.label), flags: routing.flags },
+          const { data: sessionData } = await supabase.auth.getSession();
+          const token = sessionData.session?.access_token;
+          if (!token) throw new Error("No active session");
+          const workflow = await initializeWorkflow({
+            data: { requestId: inserted.id },
+            headers: { Authorization: `Bearer ${token}` },
           });
-          if (workflow.error && !warning) warning = "Your request was saved. Power Automate is not connected yet, so the workflow trigger was simulated.";
+          finalRoutedTo = workflow.routedTo || routedTo;
+          workflowLabel = workflowModeLabel[workflow.mode];
+          if (workflow.mode === "failed") warning ||= workflow.message;
         } catch {
-          warning ||= "Your request was saved. Power Automate is not connected yet, so the workflow trigger was simulated.";
+          workflowLabel = workflowModeLabel.failed;
+          warning ||= "Your request was saved, but the workflow could not be started. It can be retried without resubmitting.";
         }
       }
 
-      setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo, routing, warning });
+      setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo: finalRoutedTo, routing, workflow: workflowLabel, warning });
       form.reset();
       setFiles([]);
       setFundingSource("");
@@ -258,10 +271,11 @@ function SubmitPage() {
           <h1 className="mt-5 text-2xl font-bold text-card-foreground">Request submitted and routed</h1>
           <p className="mt-2 text-sm text-muted-foreground">A tracking record, timestamp, attachment manifest, and automation event were created.</p>
           {result.warning && <p className="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm font-medium text-warning">{result.warning}</p>}
-          <div className="mt-6 grid gap-3 text-left sm:grid-cols-3">
+          <div className="mt-6 grid gap-3 text-left sm:grid-cols-2">
             <Meta label="Request ID" value={result.id} />
             <Meta label="Timestamp" value={new Date(result.createdAt).toLocaleString()} />
             <Meta label="Routed to" value={result.routedTo} />
+            <Meta label="Workflow" value={result.workflow} />
           </div>
           <ApprovalChain routing={result.routing} className="mt-4 text-left" />
           <div className="mt-7 flex flex-col items-center justify-center gap-2 sm:flex-row">
