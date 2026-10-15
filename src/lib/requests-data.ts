@@ -23,6 +23,8 @@ type DbRow = {
   updated_at: string;
   routed_to: string | null;
   metadata?: Record<string, unknown>;
+  // F6: embedded count of linked attachment rows
+  request_attachments?: { count: number }[];
   prototype?: boolean;
 };
 
@@ -64,7 +66,9 @@ const toEnriched = (row: DbRow, fallbackName?: string): EnrichedRequest => ({
   submittedAt: row.created_at.slice(0, 10),
   updatedAt: row.updated_at.slice(0, 10),
   description: row.description,
-  attachments: 0,
+  attachments:
+    row.request_attachments?.[0]?.count ??
+    Number((row.metadata as { attachmentCount?: number } | undefined)?.attachmentCount ?? 0),
   priority: priorityMap[row.priority],
   neededBy: row.needed_by,
   routedTo: row.routed_to,
@@ -92,7 +96,7 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
     try {
       const { data: rows, error: dbError } = await (supabase as any)
         .from("financial_requests")
-        .select("*")
+        .select("*, request_attachments(count)")
         .order("created_at", { ascending: false });
 
       const userResult = await supabase.auth.getUser();
