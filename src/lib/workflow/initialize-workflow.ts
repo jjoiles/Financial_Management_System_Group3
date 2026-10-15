@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { logger } from "@/lib/logger";
 import { routeRequest } from "@/lib/routing/engine";
 import { buildFlowPayload, postToFlow, type RequestRow } from "./power-automate";
 
@@ -121,8 +122,18 @@ export const initializeWorkflow = createServerFn({ method: "POST" })
       }
     }
 
+    const logContext = {
+      requestId: request.id,
+      requestNumber: request.request_number,
+      mode,
+      attempts,
+      ...eventMeta,
+    };
+    if (mode === "failed") logger.error("workflow.flow_rejected", logContext);
+    else logger.info("workflow.initialized", logContext);
+
     // 4. Record the outcome. The flow URL is never stored.
-    await db.from("workflow_events").insert({
+    const recorded = await db.from("workflow_events").insert({
       request_id: request.id,
       actor_user_id: context.userId,
       event_type: mode === "failed" ? "workflow_failed" : "workflow_initialized",
@@ -138,6 +149,11 @@ export const initializeWorkflow = createServerFn({ method: "POST" })
         ...eventMeta,
       },
     });
+    if (recorded.error)
+      logger.error("workflow.event_write_failed", {
+        requestId: request.id,
+        error: recorded.error,
+      });
 
     if (mode !== "failed") {
       await db

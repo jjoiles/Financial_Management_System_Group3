@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import submitHero from "@/assets/submit-hero.jpg";
 import type { FormErrors, FundingSource } from "@/lib/validation/request-schema";
 import { routeRequest, type RoutingDecision } from "@/lib/routing/engine";
+import { logger } from "@/lib/logger";
 import { initializeWorkflow, type WorkflowMode } from "@/lib/workflow/initialize-workflow";
 import { buildValidatedPayload, isDatabaseValidationError, mapDatabaseValidationError, validateSubmission } from "@/lib/validation/gateways";
 
@@ -188,10 +189,12 @@ function SubmitPage() {
         // F22 gateway 3: the database rejected the data. Show the field error
         // instead of silently saving an invalid request in prototype mode.
         if (isDatabaseValidationError(error)) {
+          logger.warn("request.rejected_by_database", { requestNumber, error });
           setErrors(mapDatabaseValidationError(error) ?? {});
           setSubmitError("The server rejected one or more fields. Review the highlighted fields.");
           return;
         }
+        logger.error("request.insert_failed_prototype_fallback", { requestNumber, error });
         inserted = savePrototypeRequest(requestPayload, requestNumber, createdAt);
         savePrototypeAttachments(inserted.id, auth.user.id, files);
         const reason = getPrototypeFallbackReason(error);
@@ -205,6 +208,7 @@ function SubmitPage() {
             const path = `${auth.user.id}/${inserted.id}/${Date.now()}-${safeName}`;
             const upload = await client.storage.from("request-attachments").upload(path, file, { upsert: false });
             if (upload.error) {
+              logger.error("attachment.upload_failed", { requestId: inserted.id, fileName: file.name, error: upload.error });
               warning ||= "Your request was saved, but one or more attachments could not be uploaded, so attachment storage was simulated.";
               continue;
             }
@@ -216,9 +220,11 @@ function SubmitPage() {
               file_size: file.size,
               content_type: file.type,
             });
+            if (attachment.error) logger.error("attachment.link_failed", { requestId: inserted.id, fileName: file.name, error: attachment.error });
             if (attachment.error) warning ||= "Your request was saved, but one or more attachments could not be linked, so attachment tracking was simulated.";
           }
-        } catch {
+        } catch (error) {
+          logger.error("attachment.storage_unavailable", { requestId: inserted.id, fileCount: files.length, error });
           savePrototypeAttachments(inserted.id, auth.user.id, files);
           warning ||= "Your request was saved, but attachment storage is not connected right now, so attachments were simulated.";
         }
@@ -239,19 +245,27 @@ function SubmitPage() {
           });
           finalRoutedTo = workflow.routedTo || routedTo;
           workflowLabel = workflowModeLabel[workflow.mode];
-          if (workflow.mode === "failed") warning ||= workflow.message;
-        } catch {
+          if (workflow.mode === "failed") {
+            logger.error("workflow.start_failed", { requestId: inserted.id, message: workflow.message });
+            warning ||= workflow.message;
+          } else {
+            logger.info("workflow.started", { requestId: inserted.id, mode: workflow.mode, alreadyInitialized: workflow.alreadyInitialized });
+          }
+        } catch (error) {
+          logger.error("workflow.call_failed", { requestId: inserted.id, error });
           workflowLabel = workflowModeLabel.failed;
           warning ||= "Your request was saved, but the workflow could not be started. It can be retried without resubmitting.";
         }
       }
 
+      logger.info("request.submitted", { requestNumber: inserted.request_number, prototype: !!inserted.prototype, attachments: files.length, routedTo: finalRoutedTo });
       setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo: finalRoutedTo, routing, workflow: workflowLabel, warning });
       form.reset();
       setFiles([]);
       setFundingSource("");
       setPreview(null);
     } catch (err) {
+      logger.error("request.submit_failed", { error: err });
       setSubmitError(getSubmitErrorMessage(err));
     } finally {
       setSubmitting(false);

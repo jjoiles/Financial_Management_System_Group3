@@ -2,6 +2,7 @@ import { X, Paperclip, Calendar, Building2, DollarSign, AlertCircle, Mail, Tag }
 import StatusBadge from "@/components/StatusBadge";
 import WorkflowTracker from "@/components/WorkflowTracker";
 import type { EnrichedRequest } from "@/lib/requests-data";
+import { useRequestActivity } from "@/lib/activity-data";
 
 export default function RequestDetailDialog({ request, onClose }: { request: EnrichedRequest | null; onClose: () => void }) {
   if (!request) return null;
@@ -65,6 +66,8 @@ export default function RequestDetailDialog({ request, onClose }: { request: Enr
               {request.description}
             </p>
           </div>
+
+          {!request.prototype && <ActivityLog requestId={request.uuid} />}
         </div>
       </div>
     </div>
@@ -79,6 +82,31 @@ function DetailRow({ icon: Icon, label, value }: { icon: typeof Mail; label: str
         {label}
       </div>
       <p className="mt-1 break-words text-sm font-medium text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function ActivityLog({ requestId }: { requestId: string }) {
+  const { events, loading, error } = useRequestActivity(requestId);
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Activity</p>
+      <div className="rounded-lg border border-border bg-background p-4">
+        {loading && <p className="text-xs text-muted-foreground">Loading activity…</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+        {!loading && !error && events.length === 0 && <p className="text-xs text-muted-foreground">No activity recorded yet.</p>}
+        <ol className="space-y-2">
+          {events.map((event) => (
+            <li key={event.id} className="flex gap-3 text-sm">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <div className="min-w-0">
+                <p className="text-foreground">{event.message}</p>
+                <p className="text-[11px] text-muted-foreground">{new Date(event.createdAt).toLocaleString()} · {event.eventType.replace(/_/g, " ")}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
     </div>
   );
 }
