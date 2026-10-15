@@ -1,12 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState, type FormEvent, type InputHTMLAttributes } from "react";
-import { z } from "zod";
 import { AlertCircle, ArrowLeft, CalendarDays, CheckCircle2, FileCheck2, Home, Loader2, Paperclip, Route as RouteIcon, UploadCloud, Zap } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import submitHero from "@/assets/submit-hero.jpg";
+import type { FormErrors, FundingSource } from "@/lib/validation/request-schema";
+import { buildValidatedPayload, isDatabaseValidationError, mapDatabaseValidationError, validateSubmission } from "@/lib/validation/gateways";
 
-type FundingSource = "department" | "research" | "university";
 type SubmissionResult = { id: string; createdAt: string; routedTo: string; warning?: string };
 type SavedRequest = { id: string; request_number: string; created_at: string; prototype?: boolean };
 
@@ -19,42 +19,6 @@ export const Route = createFileRoute("/submit")({
     ],
   }),
 });
-
-const requestSchema = z.object({
-  requesterEmail: z.string().trim().email("Enter a valid email address.").refine((email) => email.endsWith("@howard.edu"), { message: "Must be a Howard University email (@howard.edu)." }),
-  department: z.string().trim().min(2, "Department is required.").max(80),
-  fundingSource: z.enum(["department", "research", "university"], { required_error: "Select a funding source." }),
-  amount: z.coerce.number().positive("Amount must be greater than zero.").max(9999999, "Amount is too large."),
-  neededBy: z.string().min(1, "Needed-by date is required."),
-  priority: z.enum(["low", "medium", "high"]),
-  description: z.string().trim().min(1, "Business justification is required.").max(10000, "Business justification is too long."),
-  grantNumber: z.string().trim().optional(),
-  principalInvestigator: z.string().trim().optional().transform((val) => {
-    if (!val) return val;
-    return /^dr\.?\s/i.test(val) ? val : `Dr. ${val}`;
-  }),
-  universityProgram: z.string().trim().optional(),
-}).superRefine((data, ctx) => {
-  const neededBy = new Date(`${data.neededBy}T00:00:00`);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (neededBy < today) {
-    ctx.addIssue({ code: "custom", path: ["neededBy"], message: "Choose today or a future date." });
-  }
-  if (data.fundingSource === "research") {
-    if (!data.grantNumber) {
-      ctx.addIssue({ code: "custom", path: ["grantNumber"], message: "Grant number is required for research funding." });
-    } else if (data.grantNumber.length < 3) {
-      ctx.addIssue({ code: "custom", path: ["grantNumber"], message: "Grant number must be at least 3 characters." });
-    }
-    if (!data.principalInvestigator) ctx.addIssue({ code: "custom", path: ["principalInvestigator"], message: "PI name is required for research funding." });
-  }
-  if (data.fundingSource === "university" && !data.universityProgram) {
-    ctx.addIssue({ code: "custom", path: ["universityProgram"], message: "Program name is required for university funding." });
-  }
-});
-
-type FormErrors = Partial<Record<keyof z.infer<typeof requestSchema>, string>>;
 
 const routingMap: Record<FundingSource, string> = {
   department: "Department Budget Reviewer",
@@ -177,10 +141,11 @@ function SubmitPage() {
 
     const form = event.currentTarget;
     const data = Object.fromEntries(new FormData(form).entries());
-    const parsed = requestSchema.safeParse(data);
+    // F22 gateway 1: form validation
+    const parsed = validateSubmission(data);
 
-    if (!parsed.success) {
-      setErrors(Object.fromEntries(parsed.error.issues.map((issue) => [issue.path[0], issue.message])) as FormErrors);
+    if (!parsed.ok) {
+      setErrors(parsed.errors);
       setSubmitError("");
       return;
     }
@@ -194,25 +159,21 @@ function SubmitPage() {
       const client = supabase as any;
       const requestNumber = createRequestNumber();
       const createdAt = new Date().toISOString();
-      const requestPayload = {
-        user_id: auth.user.id,
-        request_number: requestNumber,
-        title: parsed.data.description.slice(0, 120) || "Financial request",
-        requester_email: parsed.data.requesterEmail,
-        department: parsed.data.department,
-        funding_source: parsed.data.fundingSource,
-        amount: parsed.data.amount,
-        needed_by: parsed.data.neededBy,
-        priority: parsed.data.priority,
-        description: parsed.data.description,
-        grant_number: parsed.data.grantNumber || null,
-        principal_investigator: parsed.data.principalInvestigator || null,
-        university_program: parsed.data.universityProgram || null,
-        status: "submitted",
-        workflow_triggered_at: createdAt,
-        routed_to: routedTo,
-        metadata: { source: "FinReq portal", automation: "Power Automate equivalent", attachmentCount: files.length },
-      };
+      // F22 gateway 2: normalize and re-check the row before it leaves the browser
+      const payloadResult = buildValidatedPayload(
+        parsed.data,
+        { userId: auth.user.id, requestNumber },
+        {
+          workflow_triggered_at: createdAt,
+          routed_to: routedTo,
+          metadata: { source: "FinReq portal", automation: "Power Automate equivalent", attachmentCount: files.length },
+        },
+      );
+      if (!payloadResult.ok) {
+        setErrors(payloadResult.errors);
+        return;
+      }
+      const requestPayload = payloadResult.data;
 
       let warning = "";
       let inserted: SavedRequest;
@@ -220,6 +181,13 @@ function SubmitPage() {
       try {
         inserted = await insertFinancialRequest(client, requestPayload, requestNumber);
       } catch (error) {
+        // F22 gateway 3: the database rejected the data. Show the field error
+        // instead of silently saving an invalid request in prototype mode.
+        if (isDatabaseValidationError(error)) {
+          setErrors(mapDatabaseValidationError(error) ?? {});
+          setSubmitError("The server rejected one or more fields. Review the highlighted fields.");
+          return;
+        }
         inserted = savePrototypeRequest(requestPayload, requestNumber, createdAt);
         savePrototypeAttachments(inserted.id, auth.user.id, files);
         const reason = getPrototypeFallbackReason(error);
@@ -448,6 +416,7 @@ function SubmitPage() {
             <li>• Required fields are checked before routing.</li>
             <li>• Email must be a Howard University address (@howard.edu).</li>
             <li>• Research and university funds reveal only relevant fields.</li>
+            <li>• The same rules are re-checked by the database before saving.</li>
           </ul>
         </div>
       </aside>
