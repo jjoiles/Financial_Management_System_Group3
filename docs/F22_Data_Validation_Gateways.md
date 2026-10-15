@@ -96,5 +96,6 @@ Now `mapDatabaseValidationError()` recognizes validation errors (`23514` CHECK v
 ## Notes for the Team
 
 - If any limit changes, update both `request-schema.ts` and the migration.
+- `NOT VALID` skips the check for existing rows only at migration time. **An UPDATE to an old row that breaks a rule is still rejected**, so a reviewer cannot change the status of a legacy prototype row with, say, a gmail address until the row is fixed. Find them with `SELECT id, request_number FROM financial_requests WHERE requester_email NOT LIKE '%@howard.edu';` (and similar per rule).
 - To enforce constraints on old rows too, clean them, then run `ALTER TABLE public.financial_requests VALIDATE CONSTRAINT <name>;`
 - File type and size rules for uploads are left to F3.
