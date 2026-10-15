@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { RequestStatus, FundingType, FinancialRequest } from "@/lib/mock-data";
+import { logger } from "@/lib/logger";
 import { readRoutingDecision, type RoutingDecision } from "@/lib/routing/engine";
 
 const PROTOTYPE_KEY = "prototype-financial-requests";
@@ -74,7 +75,8 @@ const toEnriched = (row: DbRow, fallbackName?: string): EnrichedRequest => ({
 export const readPrototypeRequests = (): DbRow[] => {
   try {
     return JSON.parse(window.localStorage.getItem(PROTOTYPE_KEY) ?? "[]");
-  } catch {
+  } catch (error) {
+    logger.warn("prototype_store.corrupt", { key: PROTOTYPE_KEY, error });
     return [];
   }
 };
@@ -100,6 +102,7 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
       if (!dbError && rows) {
         combined = (rows as DbRow[]).map((r) => toEnriched(r));
       } else if (dbError) {
+        logger.error("requests.load_failed", { error: dbError });
         setError(dbError.message);
       }
 
@@ -113,6 +116,7 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
       combined.sort((a, b) => (a.submittedAt < b.submittedAt ? 1 : -1));
       setData(combined);
     } catch (err) {
+      logger.error("requests.load_crashed", { error: err });
       setError(err instanceof Error ? err.message : "Failed to load requests");
     } finally {
       setLoading(false);
