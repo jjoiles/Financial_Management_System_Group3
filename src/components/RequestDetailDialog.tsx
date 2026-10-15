@@ -3,6 +3,7 @@ import StatusBadge from "@/components/StatusBadge";
 import WorkflowTracker from "@/components/WorkflowTracker";
 import type { EnrichedRequest } from "@/lib/requests-data";
 import { useRequestActivity } from "@/lib/activity-data";
+import { linkTypeLabel, useRequestLinks } from "@/lib/links-data";
 
 export default function RequestDetailDialog({ request, onClose }: { request: EnrichedRequest | null; onClose: () => void }) {
   if (!request) return null;
@@ -41,6 +42,7 @@ export default function RequestDetailDialog({ request, onClose }: { request: Enr
             <DetailRow icon={Calendar} label="Needed By" value={request.neededBy} />
             <DetailRow icon={Calendar} label="Submitted" value={request.submittedAt} />
             {request.routedTo && <DetailRow icon={Paperclip} label="Routed To" value={request.routedTo} />}
+            <DetailRow icon={Paperclip} label="Attachments" value={String(request.attachments)} />
           </div>
 
           {request.routing && (
@@ -66,6 +68,8 @@ export default function RequestDetailDialog({ request, onClose }: { request: Enr
               {request.description}
             </p>
           </div>
+
+          {!request.prototype && <LinkedRecords requestId={request.uuid} />}
 
           {!request.prototype && <ActivityLog requestId={request.uuid} />}
         </div>
@@ -107,6 +111,34 @@ function ActivityLog({ requestId }: { requestId: string }) {
           ))}
         </ol>
       </div>
+    </div>
+  );
+}
+
+function LinkedRecords({ requestId }: { requestId: string }) {
+  const { links, loading } = useRequestLinks(requestId);
+  if (loading || links.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Linked Records</p>
+      <ul className="space-y-2 rounded-lg border border-border bg-background p-4">
+        {links.map((link) => (
+          <li key={link.id} className="flex flex-wrap items-start justify-between gap-2 text-sm">
+            <div className="min-w-0">
+              <p className="font-mono text-xs text-primary">{link.linked?.requestNumber ?? "Unavailable"}</p>
+              <p className="truncate text-foreground">{link.linked?.title}</p>
+              <p className="text-[11px] text-muted-foreground">{link.reason}</p>
+            </div>
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                link.linkType === "possible_duplicate" ? "bg-warning/15 text-warning" : "bg-primary/10 text-primary"
+              }`}
+            >
+              {linkTypeLabel[link.linkType]}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
