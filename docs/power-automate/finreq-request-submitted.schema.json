@@ -1,0 +1,68 @@
+{
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "event",
+    "requestId",
+    "requestNumber",
+    "submittedAt",
+    "requester",
+    "department",
+    "fundingSource",
+    "amount",
+    "neededBy",
+    "priority",
+    "routing"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer" },
+    "event": { "type": "string" },
+    "requestId": { "type": "string" },
+    "requestNumber": { "type": "string" },
+    "submittedAt": { "type": "string" },
+    "status": { "type": "string" },
+    "requester": {
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" }
+      }
+    },
+    "department": { "type": "string" },
+    "fundingSource": { "type": "string" },
+    "amount": { "type": "number" },
+    "currency": { "type": "string" },
+    "neededBy": { "type": "string" },
+    "priority": { "type": "string" },
+    "title": { "type": "string" },
+    "research": {
+      "type": ["object", "null"],
+      "properties": {
+        "grantNumber": { "type": "string" },
+        "principalInvestigator": { "type": "string" }
+      }
+    },
+    "universityProgram": { "type": ["string", "null"] },
+    "routing": {
+      "type": "object",
+      "properties": {
+        "primaryQueue": { "type": "string" },
+        "primaryLabel": { "type": "string" },
+        "approvalChain": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "step": { "type": "integer" },
+              "queue": { "type": "string" },
+              "label": { "type": "string" }
+            }
+          }
+        },
+        "flags": { "type": "array", "items": { "type": "string" } },
+        "rulesVersion": { "type": "string" }
+      }
+    },
+    "appUrl": { "type": ["string", "null"] }
+  }
+}
