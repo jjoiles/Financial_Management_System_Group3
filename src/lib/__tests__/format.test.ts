@@ -18,3 +18,13 @@ describe("formatCurrency", () => {
     expect(formatCurrency(Number("not a number"))).toBe("$0.00");
   });
 });
+
+describe("formatCurrency locale independence", () => {
+  it("matches the en-US format regardless of the machine's locale", () => {
+    const expected = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
+      12500,
+    );
+    expect(formatCurrency(12500)).toBe(expected);
+    expect(formatCurrency(12500)).not.toContain("US$");
+  });
+});
