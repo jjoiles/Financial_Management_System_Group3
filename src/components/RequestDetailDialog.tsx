@@ -4,6 +4,7 @@ import WorkflowTracker from "@/components/WorkflowTracker";
 import type { EnrichedRequest } from "@/lib/requests-data";
 import { useRequestActivity } from "@/lib/activity-data";
 import { linkTypeLabel, useRequestLinks } from "@/lib/links-data";
+import { formatCurrency } from "@/lib/format";
 
 export default function RequestDetailDialog({ request, onClose }: { request: EnrichedRequest | null; onClose: () => void }) {
   if (!request) return null;
@@ -37,7 +38,7 @@ export default function RequestDetailDialog({ request, onClose }: { request: Enr
             <DetailRow icon={Mail} label="Requester" value={request.email} />
             <DetailRow icon={Building2} label="Department" value={request.department} />
             <DetailRow icon={Tag} label="Funding Source" value={`${request.fundingType} Fund`} />
-            <DetailRow icon={DollarSign} label="Amount" value={`$${request.amount.toLocaleString()}`} />
+            <DetailRow icon={DollarSign} label="Amount" value={formatCurrency(request.amount)} />
             <DetailRow icon={AlertCircle} label="Priority" value={request.priority} />
             <DetailRow icon={Calendar} label="Needed By" value={request.neededBy} />
             <DetailRow icon={Calendar} label="Submitted" value={request.submittedAt} />
