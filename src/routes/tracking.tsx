@@ -6,6 +6,7 @@ import StatusBadge from "@/components/StatusBadge";
 import WorkflowTracker from "@/components/WorkflowTracker";
 import RequestDetailDialog from "@/components/RequestDetailDialog";
 import { FileText, Loader2, Plus } from "lucide-react";
+import { formatCurrency } from "@/lib/format";
 
 export const Route = createFileRoute("/tracking")({
   component: TrackingPage,
@@ -84,7 +85,7 @@ function Group({ title, subtitle, requests, onSelect, emptyText }: { title: stri
                     <StatusBadge status={req.status} />
                     {req.prototype && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning">Prototype</span>}
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{req.id} · ${req.amount.toLocaleString()} · {req.fundingType} Fund</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{req.id} · {formatCurrency(req.amount)} · {req.fundingType} Fund</p>
                 </div>
                 <div className="text-right text-xs">
                   <p className="text-muted-foreground">Submitted</p>
