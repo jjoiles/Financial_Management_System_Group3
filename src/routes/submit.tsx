@@ -1,30 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState, type FormEvent, type InputHTMLAttributes } from "react";
+import { useSubmitRequest } from "@/hooks/use-submit-request";
 import { AlertCircle, ArrowLeft, CalendarDays, CheckCircle2, FileCheck2, Home, Loader2, Paperclip, Route as RouteIcon, UploadCloud, Zap } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import submitHero from "@/assets/submit-hero.jpg";
-import type { FormErrors, FundingSource } from "@/lib/validation/request-schema";
+import type { FundingSource } from "@/lib/validation/request-schema";
 import { routeRequest, type RoutingDecision } from "@/lib/routing/engine";
-import { logger } from "@/lib/logger";
-import { initializeWorkflow, type WorkflowMode } from "@/lib/workflow/initialize-workflow";
-import { buildValidatedPayload, isDatabaseValidationError, mapDatabaseValidationError, validateSubmission } from "@/lib/validation/gateways";
-import {
-  createRequestNumber,
-  generateRequestMetadataSafe,
-  sanitizeFileName,
-  verifyMetadataAssociation,
-} from "@/lib/request-utils";
-
-type SubmissionResult = { id: string; createdAt: string; routedTo: string; routing: RoutingDecision; workflow: string; warning?: string };
-
-const workflowModeLabel: Record<WorkflowMode, string> = {
-  power_automate: "Started in Power Automate",
-  simulated: "Simulated (flow not connected)",
-  failed: "Not started",
-};
-type SavedRequest = { id: string; request_number: string; created_at: string; prototype?: boolean };
-
 export const Route = createFileRoute("/submit")({
   component: SubmitPage,
   head: () => ({
@@ -35,271 +16,25 @@ export const Route = createFileRoute("/submit")({
   }),
 });
 
-const transientBackendCodes = new Set(["PGRST000", "PGRST001", "PGRST002"]);
-
-const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
-
-const isTransientBackendError = (error: unknown) => {
-  const maybeError = error as { code?: string; message?: string; details?: string; status?: number };
-  const text = `${maybeError.message ?? ""} ${maybeError.details ?? ""}`.toLowerCase();
-  return (
-    transientBackendCodes.has(maybeError.code ?? "") ||
-    maybeError.status === 503 ||
-    text.includes("schema cache") ||
-    text.includes("recovery mode") ||
-    text.includes("no connection")
-  );
-};
-
-const getSubmitErrorMessage = (error: unknown) => {
-  if (isTransientBackendError(error)) {
-    return "The request could not be saved because the backend was temporarily unavailable. Please try again in a moment.";
-  }
-  return error instanceof Error ? error.message : "Submission failed. Please review the required fields and try again.";
-};
-
-const getPrototypeFallbackReason = (error: unknown) => {
-  if (isTransientBackendError(error)) {
-    return "The hosted backend was temporarily unavailable.";
-  }
-  return error instanceof Error ? error.message : "The hosted backend rejected the request.";
-};
-
-async function insertFinancialRequest(client: any, payload: Record<string, unknown>, requestNumber: string) {
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const { data, error } = await client
-      .from("financial_requests")
-      .insert(payload)
-      .select("id, request_number, created_at")
-      .single();
-
-    if (!error) return data;
-
-    if (error.code === "23505") {
-      const existing = await client
-        .from("financial_requests")
-        .select("id, request_number, created_at")
-        .eq("request_number", requestNumber)
-        .maybeSingle();
-      if (!existing.error && existing.data) return existing.data;
-    }
-
-    if (attempt < 5 && isTransientBackendError(error)) {
-      await wait(Math.min(800 * 2 ** attempt, 8000));
-      continue;
-    }
-
-    throw error;
-  }
-
-  throw new Error("Submission failed. Please try again.");
-}
-
-const savePrototypeRequest = (payload: Record<string, unknown>, requestNumber: string, createdAt: string): SavedRequest => {
-  const savedRequest = {
-    ...payload,
-    id: crypto.randomUUID(),
-    request_number: requestNumber,
-    created_at: createdAt,
-    prototype: true,
-  };
-  const existing = JSON.parse(window.localStorage.getItem("prototype-financial-requests") ?? "[]") as unknown[];
-  window.localStorage.setItem("prototype-financial-requests", JSON.stringify([savedRequest, ...existing].slice(0, 50)));
-  return savedRequest;
-};
-
-const savePrototypeAttachments = (requestId: string, userId: string, attachments: File[]) => {
-  if (attachments.length === 0) return;
-  const records = attachments.map((file) => ({
-    id: crypto.randomUUID(),
-    request_id: requestId,
-    user_id: userId,
-    file_name: file.name,
-    file_path: `prototype://${requestId}/${file.name}`,
-    file_size: file.size,
-    content_type: file.type,
-    created_at: new Date().toISOString(),
-  }));
-  const existing = JSON.parse(window.localStorage.getItem("prototype-request-attachments") ?? "[]") as unknown[];
-  window.localStorage.setItem("prototype-request-attachments", JSON.stringify([...records, ...existing].slice(0, 100)));
-};
-
 function SubmitPage() {
   const auth = useAuth();
   const [fundingSource, setFundingSource] = useState<FundingSource | "">("");
   const [files, setFiles] = useState<File[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<SubmissionResult | null>(null);
   const [preview, setPreview] = useState<RoutingDecision | null>(null);
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [submitError, setSubmitError] = useState("");
+  const { submitting, result, errors, submitError, submit, clearFeedback, clearResult } =
+    useSubmitRequest(auth.user?.id ?? null);
   const defaultEmail = auth.user?.email ?? "";
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!auth.user) {
-      setSubmitError("Please sign in before submitting a financial request.");
-      return;
-    }
-
     const form = event.currentTarget;
-    const data = Object.fromEntries(new FormData(form).entries());
-    // F22 gateway 1: form validation
-    const parsed = validateSubmission(data);
-
-    if (!parsed.ok) {
-      setErrors(parsed.errors);
-      setSubmitError("");
-      return;
-    }
-
-    setErrors({});
-    setSubmitError("");
-    setSubmitting(true);
-
-    try {
-      // F8: decide the queue and approval chain from the validated input
-      const routing = routeRequest(parsed.data);
-      const routedTo = routing.primaryLabel;
-      const client = supabase as any;
-      const now = new Date();
-      const requestNumber = createRequestNumber(now);
-      const createdAt = now.toISOString();
-
-      // F4: generate validated, schema-compliant metadata (timestamps, file manifest,
-      // fiscal period, amount tier, and user/request association) with fallback safety.
-      const metadata = generateRequestMetadataSafe({
-        userId: auth.user.id,
-        requestNumber,
-        requesterEmail: parsed.data.requesterEmail,
-        department: parsed.data.department,
-        fundingSource: parsed.data.fundingSource,
-        amount: parsed.data.amount,
-        priority: parsed.data.priority,
-        neededBy: parsed.data.neededBy,
-        files,
-        routing,
-        now,
-      });
-
-      const association = verifyMetadataAssociation(metadata, {
-        userId: auth.user.id,
-        requestNumber,
-        requesterEmail: parsed.data.requesterEmail,
-        department: parsed.data.department,
-        attachmentCount: files.length,
-      });
-      if (!association.linked) {
-        logger.error("metadata.association_mismatch", { requestNumber, mismatches: association.mismatches });
-        setSubmitError("Request metadata could not be linked to your account. Please refresh and try again.");
-        return;
-      }
-
-      // F22 gateway 2: normalize and re-check the row before it leaves the browser
-      const payloadResult = buildValidatedPayload(
-        parsed.data,
-        { userId: auth.user.id, requestNumber },
-        {
-          routed_to: routedTo,
-          metadata,
-        },
-      );
-      if (!payloadResult.ok) {
-        setErrors(payloadResult.errors);
-        return;
-      }
-      const requestPayload = payloadResult.data;
-
-      let warning = "";
-      let inserted: SavedRequest;
-
-      try {
-        inserted = await insertFinancialRequest(client, requestPayload, requestNumber);
-      } catch (error) {
-        // F22 gateway 3: the database rejected the data. Show the field error
-        // instead of silently saving an invalid request in prototype mode.
-        if (isDatabaseValidationError(error)) {
-          logger.warn("request.rejected_by_database", { requestNumber, error });
-          setErrors(mapDatabaseValidationError(error) ?? {});
-          setSubmitError("The server rejected one or more fields. Review the highlighted fields.");
-          return;
-        }
-        logger.error("request.insert_failed_prototype_fallback", { requestNumber, error });
-        inserted = savePrototypeRequest(requestPayload, requestNumber, createdAt);
-        savePrototypeAttachments(inserted.id, auth.user.id, files);
-        const reason = getPrototypeFallbackReason(error);
-        warning = `Saved in prototype mode. ${reason} Attachments and workflow were simulated.`;
-      }
-
-      if (!inserted.prototype) {
-        try {
-          for (const file of files) {
-            const safeName = sanitizeFileName(file.name);
-            const path = `${auth.user.id}/${inserted.id}/${Date.now()}-${safeName}`;
-            const upload = await client.storage.from("request-attachments").upload(path, file, { upsert: false });
-            if (upload.error) {
-              logger.error("attachment.upload_failed", { requestId: inserted.id, fileName: file.name, error: upload.error });
-              warning ||= "Your request was saved, but one or more attachments could not be uploaded, so attachment storage was simulated.";
-              continue;
-            }
-            const attachment = await client.from("request_attachments").insert({
-              request_id: inserted.id,
-              user_id: auth.user.id,
-              file_name: file.name,
-              file_path: path,
-              file_size: file.size,
-              content_type: file.type,
-            });
-            if (attachment.error) logger.error("attachment.link_failed", { requestId: inserted.id, fileName: file.name, error: attachment.error });
-            if (attachment.error) warning ||= "Your request was saved, but one or more attachments could not be linked, so attachment tracking was simulated.";
-          }
-        } catch (error) {
-          logger.error("attachment.storage_unavailable", { requestId: inserted.id, fileCount: files.length, error });
-          savePrototypeAttachments(inserted.id, auth.user.id, files);
-          warning ||= "Your request was saved, but attachment storage is not connected right now, so attachments were simulated.";
-        }
-      }
-
-      // F7: start the Power Automate workflow on the server. The server
-      // re-checks routing and records the outcome in workflow_events.
-      let workflowLabel = "Simulated (prototype mode)";
-      let finalRoutedTo = routedTo;
-      if (!inserted.prototype) {
-        try {
-          const { data: sessionData } = await supabase.auth.getSession();
-          const token = sessionData.session?.access_token;
-          if (!token) throw new Error("No active session");
-          const workflow = await initializeWorkflow({
-            data: { requestId: inserted.id },
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          finalRoutedTo = workflow.routedTo || routedTo;
-          workflowLabel = workflowModeLabel[workflow.mode];
-          if (workflow.mode === "failed") {
-            logger.error("workflow.start_failed", { requestId: inserted.id, message: workflow.message });
-            warning ||= workflow.message;
-          } else {
-            logger.info("workflow.started", { requestId: inserted.id, mode: workflow.mode, alreadyInitialized: workflow.alreadyInitialized });
-          }
-        } catch (error) {
-          logger.error("workflow.call_failed", { requestId: inserted.id, error });
-          workflowLabel = workflowModeLabel.failed;
-          warning ||= "Your request was saved, but the workflow could not be started. It can be retried without resubmitting.";
-        }
-      }
-
-      logger.info("request.submitted", { requestNumber: inserted.request_number, prototype: !!inserted.prototype, attachments: files.length, routedTo: finalRoutedTo });
-      setResult({ id: inserted.request_number, createdAt: inserted.created_at, routedTo: finalRoutedTo, routing, workflow: workflowLabel, warning });
+    const values = Object.fromEntries(new FormData(form).entries());
+    if (await submit(values, files)) {
       form.reset();
       setFiles([]);
       setFundingSource("");
       setPreview(null);
-    } catch (err) {
-      logger.error("request.submit_failed", { error: err });
-      setSubmitError(getSubmitErrorMessage(err));
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -324,7 +59,7 @@ function SubmitPage() {
           </div>
           <ApprovalChain routing={result.routing} className="mt-4 text-left" />
           <div className="mt-7 flex flex-col items-center justify-center gap-2 sm:flex-row">
-            <button onClick={() => setResult(null)} className="rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
+            <button onClick={clearResult} className="rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
               Submit another request
             </button>
             <Link to="/tracking" className="rounded-md border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
@@ -451,7 +186,7 @@ function SubmitPage() {
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
               Submit and trigger workflow
             </button>
-            <button type="reset" onClick={() => { setFundingSource(""); setFiles([]); setErrors({}); setSubmitError(""); setPreview(null); }} className="rounded-md border border-border bg-background px-6 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
+            <button type="reset" onClick={() => { setFundingSource(""); setFiles([]); clearFeedback(); setPreview(null); }} className="rounded-md border border-border bg-background px-6 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
               Clear form
             </button>
           </div>

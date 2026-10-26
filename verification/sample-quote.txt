@@ -1,0 +1,4 @@
+Synthetic verification attachment.
+Item: teaching lab equipment
+Amount: 1200.50 USD
+This fixture contains no real request or vendor information.
