@@ -3,8 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { RequestStatus, FundingType, FinancialRequest } from "@/lib/mock-data";
 import { logger } from "@/lib/logger";
 import { readRoutingDecision, type RoutingDecision } from "@/lib/routing/engine";
-
-const PROTOTYPE_KEY = "prototype-financial-requests";
+import { readPrototypeRequests as readPrototypeRequestStore } from "@/lib/prototype-store";
 
 type DbRow = {
   id: string;
@@ -76,14 +75,7 @@ const toEnriched = (row: DbRow, fallbackName?: string): EnrichedRequest => ({
   prototype: !!row.prototype,
 });
 
-export const readPrototypeRequests = (): DbRow[] => {
-  try {
-    return JSON.parse(window.localStorage.getItem(PROTOTYPE_KEY) ?? "[]");
-  } catch (error) {
-    logger.warn("prototype_store.corrupt", { key: PROTOTYPE_KEY, error });
-    return [];
-  }
-};
+export const readPrototypeRequests = (): DbRow[] => readPrototypeRequestStore<DbRow>();
 
 export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
   const [data, setData] = useState<EnrichedRequest[]>([]);
