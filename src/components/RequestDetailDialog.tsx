@@ -69,6 +69,55 @@ export default function RequestDetailDialog({ request, onClose }: { request: Enr
             </p>
           </div>
 
+          {request.metadata && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Generated Metadata (F4)
+              </p>
+              <div className="space-y-3 rounded-lg border border-border bg-background p-4 text-xs">
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <div>
+                    <span className="text-muted-foreground">Fiscal Period: </span>
+                    <span className="font-medium text-foreground">
+                      {request.metadata.derived.fiscalYear} · {request.metadata.derived.fiscalQuarter}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Amount Tier: </span>
+                    <span className="font-medium capitalize text-foreground">
+                      {request.metadata.derived.amountTier}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Schema: </span>
+                    <span className="font-mono text-foreground">
+                      v{request.metadata.schemaVersion} ({request.metadata.generationStatus})
+                    </span>
+                  </div>
+                </div>
+                {request.metadata.attachments.length > 0 && (
+                  <div className="border-t border-border pt-2">
+                    <p className="mb-1 font-medium text-muted-foreground">
+                      Extracted Attachment Manifest ({request.metadata.attachments.length} file
+                      {request.metadata.attachments.length === 1 ? "" : "s"} ·{" "}
+                      {request.metadata.derived.totalAttachmentBytes.toLocaleString()} bytes)
+                    </p>
+                    <ul className="space-y-1">
+                      {request.metadata.attachments.map((att, idx) => (
+                        <li key={`${att.safeFileName}-${idx}`} className="flex items-center justify-between gap-2 font-mono text-[11px] text-foreground">
+                          <span className="truncate">{att.safeFileName}</span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {att.contentType} · {att.sizeBytes.toLocaleString()} B
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {!request.prototype && <LinkedRecords requestId={request.uuid} />}
 
           {!request.prototype && <ActivityLog requestId={request.uuid} />}

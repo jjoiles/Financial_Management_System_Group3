@@ -9,6 +9,12 @@ import { routeRequest, type RoutingDecision } from "@/lib/routing/engine";
 import { logger } from "@/lib/logger";
 import { initializeWorkflow, type WorkflowMode } from "@/lib/workflow/initialize-workflow";
 import { buildValidatedPayload, isDatabaseValidationError, mapDatabaseValidationError, validateSubmission } from "@/lib/validation/gateways";
+import {
+  createRequestNumber,
+  generateRequestMetadataSafe,
+  sanitizeFileName,
+  verifyMetadataAssociation,
+} from "@/lib/request-utils";
 
 type SubmissionResult = { id: string; createdAt: string; routedTo: string; routing: RoutingDecision; workflow: string; warning?: string };
 
@@ -30,12 +36,6 @@ export const Route = createFileRoute("/submit")({
 });
 
 const transientBackendCodes = new Set(["PGRST000", "PGRST001", "PGRST002"]);
-
-const createRequestNumber = () => {
-  const year = new Date().getFullYear();
-  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
-  return `FR-${year}-${suffix}`;
-};
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -163,15 +163,46 @@ function SubmitPage() {
       const routing = routeRequest(parsed.data);
       const routedTo = routing.primaryLabel;
       const client = supabase as any;
-      const requestNumber = createRequestNumber();
-      const createdAt = new Date().toISOString();
+      const now = new Date();
+      const requestNumber = createRequestNumber(now);
+      const createdAt = now.toISOString();
+
+      // F4: generate validated, schema-compliant metadata (timestamps, file manifest,
+      // fiscal period, amount tier, and user/request association) with fallback safety.
+      const metadata = generateRequestMetadataSafe({
+        userId: auth.user.id,
+        requestNumber,
+        requesterEmail: parsed.data.requesterEmail,
+        department: parsed.data.department,
+        fundingSource: parsed.data.fundingSource,
+        amount: parsed.data.amount,
+        priority: parsed.data.priority,
+        neededBy: parsed.data.neededBy,
+        files,
+        routing,
+        now,
+      });
+
+      const association = verifyMetadataAssociation(metadata, {
+        userId: auth.user.id,
+        requestNumber,
+        requesterEmail: parsed.data.requesterEmail,
+        department: parsed.data.department,
+        attachmentCount: files.length,
+      });
+      if (!association.linked) {
+        logger.error("metadata.association_mismatch", { requestNumber, mismatches: association.mismatches });
+        setSubmitError("Request metadata could not be linked to your account. Please refresh and try again.");
+        return;
+      }
+
       // F22 gateway 2: normalize and re-check the row before it leaves the browser
       const payloadResult = buildValidatedPayload(
         parsed.data,
         { userId: auth.user.id, requestNumber },
         {
           routed_to: routedTo,
-          metadata: { source: "FinReq portal", automation: "Power Automate", attachmentCount: files.length, routing },
+          metadata,
         },
       );
       if (!payloadResult.ok) {
@@ -204,7 +235,7 @@ function SubmitPage() {
       if (!inserted.prototype) {
         try {
           for (const file of files) {
-            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+            const safeName = sanitizeFileName(file.name);
             const path = `${auth.user.id}/${inserted.id}/${Date.now()}-${safeName}`;
             const upload = await client.storage.from("request-attachments").upload(path, file, { upsert: false });
             if (upload.error) {

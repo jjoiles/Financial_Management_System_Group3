@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { RequestStatus, FundingType, FinancialRequest } from "@/lib/mock-data";
 import { logger } from "@/lib/logger";
 import { readRoutingDecision, type RoutingDecision } from "@/lib/routing/engine";
+import { readRequestMetadata, type RequestMetadata } from "@/lib/request-utils";
 
 const PROTOTYPE_KEY = "prototype-financial-requests";
 
@@ -50,6 +51,7 @@ export type EnrichedRequest = FinancialRequest & {
   neededBy: string;
   routedTo: string | null;
   routing: RoutingDecision | null;
+  metadata?: RequestMetadata | null;
   prototype: boolean;
 };
 
@@ -73,6 +75,7 @@ const toEnriched = (row: DbRow, fallbackName?: string): EnrichedRequest => ({
   neededBy: row.needed_by,
   routedTo: row.routed_to,
   routing: readRoutingDecision(row.metadata),
+  metadata: readRequestMetadata(row.metadata),
   prototype: !!row.prototype,
 });
 
