@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { mockRequests, monthlyData, fundingDistribution, turnaroundData } from "@/lib/mock-data";
 import { useFinancialRequests } from "@/lib/requests-data";
+import { buildFinancialReportCsv } from "@/lib/csv-export";
 
 // F17 requirement: real-time reporting dashboard route for "Real-Time Reporting Templates".
 export const Route = createFileRoute("/analytics")({
@@ -133,22 +134,7 @@ function AnalyticsPage() {
 
   // F17 requirement: export feature for generating CSV analytics report.
   const exportReport = () => {
-    const rows = [
-      ["Request ID", "Requester", "Department", "Funding Type", "Amount", "Status", "Updated At"],
-      ...sourceRequests.map((request) => [
-        request.id,
-        request.requester,
-        request.department,
-        request.fundingType,
-        String(request.amount),
-        request.status,
-        request.updatedAt,
-      ]),
-    ];
-
-    const csv = rows
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
+    const csv = buildFinancialReportCsv(sourceRequests);
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
