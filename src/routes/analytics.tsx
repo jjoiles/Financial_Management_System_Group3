@@ -23,6 +23,11 @@ import {
 } from "lucide-react";
 import { mockRequests, monthlyData, fundingDistribution, turnaroundData } from "@/lib/mock-data";
 import { useFinancialRequests } from "@/lib/requests-data";
+import {
+  calculateAnalyticsSummary,
+  getReportingWindowData,
+  type ReportingWindow,
+} from "@/lib/analytics-utils";
 
 // F17 requirement: real-time reporting dashboard route for "Real-Time Reporting Templates".
 export const Route = createFileRoute("/analytics")({
@@ -43,7 +48,7 @@ const COLORS = [
   "var(--color-chart-5)",
 ];
 
-type WindowKey = "Week" | "Month" | "Quarter";
+type WindowKey = ReportingWindow;
 
 function AnalyticsPage() {
   // F17 requirement: data source selection for analytics page with fallback mock dataset.
@@ -51,57 +56,16 @@ function AnalyticsPage() {
   const sourceRequests = requests.length ? requests : mockRequests;
   const [windowKey, setWindowKey] = useState<WindowKey>("Month");
 
-  // F17 requirement: KPI aggregation for pending, completed, averages, and approval rate.
-  const summary = useMemo(() => {
-    const pending = sourceRequests.filter(
-      (r) => r.status === "Submitted" || r.status === "Under Review"
-    ).length;
-    const completed = sourceRequests.filter(
-      (r) => r.status === "Completed" || r.status === "Approved"
-    ).length;
-    const avgAmount = sourceRequests.length
-      ? Math.round(
-          sourceRequests.reduce((sum, r) => sum + r.amount, 0) / sourceRequests.length
-        )
-      : 0;
-    const overdue = sourceRequests.filter((r) => r.status === "Under Review").length;
+  // Lab 3: Keep business calculations separate from dashboard rendering.
+  const summary = useMemo(
+    () => calculateAnalyticsSummary(sourceRequests),
+    [sourceRequests],
+  );
 
-    return {
-      pending,
-      completed,
-      avgAmount,
-      overdue,
-      totalRequests: sourceRequests.length,
-      approvalRate: sourceRequests.length
-        ? Math.round(
-            (sourceRequests.filter((r) => r.status === "Approved" || r.status === "Completed").length /
-              sourceRequests.length) *
-              100
-          )
-        : 0,
-    };
-  }, [sourceRequests]);
-
-  // F17 requirement: reporting-window chart data for Week/Month/Quarter views.
-  const timeWindowData = useMemo<Array<{ month: string; submitted: number; approved: number; rejected: number }>>(() => {
-    if (windowKey === "Week") {
-      return [
-        { month: "W1", submitted: 6, approved: 4, rejected: 1 },
-        { month: "W2", submitted: 8, approved: 6, rejected: 2 },
-        { month: "W3", submitted: 10, approved: 7, rejected: 3 },
-        { month: "W4", submitted: 9, approved: 8, rejected: 2 },
-      ];
-    }
-    if (windowKey === "Quarter") {
-      return [
-        { month: "Q1", submitted: 44, approved: 34, rejected: 6 },
-        { month: "Q2", submitted: 51, approved: 38, rejected: 8 },
-        { month: "Q3", submitted: 58, approved: 42, rejected: 10 },
-        { month: "Q4", submitted: 62, approved: 46, rejected: 11 },
-      ];
-    }
-    return [...monthlyData];
-  }, [windowKey]);
+  const timeWindowData = useMemo(
+    () => getReportingWindowData(windowKey),
+    [windowKey],
+  );
 
   const kpis = [
     { label: "Avg. Turnaround", value: "4.8 days" },
