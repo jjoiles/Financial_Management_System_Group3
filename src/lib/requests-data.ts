@@ -4,8 +4,7 @@ import type { RequestStatus, FundingType, FinancialRequest } from "@/lib/mock-da
 import { logger } from "@/lib/logger";
 import { readRoutingDecision, type RoutingDecision } from "@/lib/routing/engine";
 import { readRequestMetadata, type RequestMetadata } from "@/lib/request-utils";
-
-const PROTOTYPE_KEY = "prototype-financial-requests";
+import { readPrototypeRequests as readPrototypeRequestStore } from "@/lib/prototype-store";
 
 type DbRow = {
   id: string;
@@ -82,15 +81,7 @@ const toEnriched = (row: DbRow, fallbackName?: string): EnrichedRequest => ({
   userId: row.user_id ?? null,
 });
 
-export const readPrototypeRequests = (): DbRow[] => {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(PROTOTYPE_KEY) ?? "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    logger.warn("prototype_store.corrupt", { key: PROTOTYPE_KEY, error });
-    return [];
-  }
-};
+export const readPrototypeRequests = (): DbRow[] => readPrototypeRequestStore<DbRow>();
 
 export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
   const [data, setData] = useState<EnrichedRequest[]>([]);
