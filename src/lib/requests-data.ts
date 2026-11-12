@@ -53,6 +53,7 @@ export type EnrichedRequest = FinancialRequest & {
   routing: RoutingDecision | null;
   metadata?: RequestMetadata | null;
   prototype: boolean;
+  userId: string | null;
 };
 
 const toEnriched = (row: DbRow, fallbackName?: string): EnrichedRequest => ({
@@ -65,8 +66,9 @@ const toEnriched = (row: DbRow, fallbackName?: string): EnrichedRequest => ({
   fundingType: fundingMap[row.funding_source],
   amount: Number(row.amount),
   status: statusMap[row.status],
-  submittedAt: row.created_at.slice(0, 10),
-  updatedAt: row.updated_at.slice(0, 10),
+  submittedAt: (row.created_at ?? "").slice(0, 10),
+  // Prototype (local) rows have no updated_at; fall back to created_at.
+  updatedAt: (row.updated_at ?? row.created_at ?? "").slice(0, 10),
   description: row.description,
   attachments:
     row.request_attachments?.[0]?.count ??
@@ -77,11 +79,13 @@ const toEnriched = (row: DbRow, fallbackName?: string): EnrichedRequest => ({
   routing: readRoutingDecision(row.metadata),
   metadata: readRequestMetadata(row.metadata),
   prototype: !!row.prototype,
+  userId: row.user_id ?? null,
 });
 
 export const readPrototypeRequests = (): DbRow[] => {
   try {
-    return JSON.parse(window.localStorage.getItem(PROTOTYPE_KEY) ?? "[]");
+    const parsed = JSON.parse(window.localStorage.getItem(PROTOTYPE_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed : [];
   } catch (error) {
     logger.warn("prototype_store.corrupt", { key: PROTOTYPE_KEY, error });
     return [];
@@ -97,27 +101,44 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
     setLoading(true);
     setError(null);
     try {
-      const { data: rows, error: dbError } = await (supabase as any)
-        .from("financial_requests")
-        .select("*, request_attachments(count)")
-        .order("created_at", { ascending: false });
-
-      const userResult = await supabase.auth.getUser();
-      const currentUserId = userResult.data.user?.id;
-
-      let combined: EnrichedRequest[] = [];
-      if (!dbError && rows) {
-        combined = (rows as DbRow[]).map((r) => toEnriched(r));
-      } else if (dbError) {
-        logger.error("requests.load_failed", { error: dbError });
-        setError(dbError.message);
+      // Backend failures must never hide locally saved prototype requests.
+      let rows: DbRow[] | null = null;
+      try {
+        const res = await (supabase as any)
+          .from("financial_requests")
+          .select("*, request_attachments(count)")
+          .order("created_at", { ascending: false });
+        if (res.error) {
+          logger.error("requests.load_failed", { error: res.error });
+          setError(res.error.message);
+        } else rows = res.data as DbRow[];
+      } catch (dbErr) {
+        logger.error("requests.load_crashed", { error: dbErr });
+        setError(dbErr instanceof Error ? dbErr.message : "Failed to load requests");
       }
 
-      const proto = readPrototypeRequests().map((r) => toEnriched({ ...r, prototype: true }));
+      let currentUserId: string | undefined;
+      try {
+        currentUserId = (await supabase.auth.getSession()).data.session?.user.id;
+      } catch {
+        currentUserId = undefined;
+      }
+
+      const safeMap = (r: DbRow) => {
+        try {
+          return [toEnriched(r)];
+        } catch (mapErr) {
+          logger.warn("requests.row_skipped", { id: r?.id, error: mapErr });
+          return [];
+        }
+      };
+
+      let combined: EnrichedRequest[] = (rows ?? []).flatMap(safeMap);
+      const proto = readPrototypeRequests().flatMap((r) => safeMap({ ...r, prototype: true }));
       combined = [...combined, ...proto];
 
-      if (opts.onlyMine && currentUserId) {
-        combined = combined.filter((r) => proto.find((p) => p.uuid === r.uuid) || rows?.find((row: DbRow) => row.id === r.uuid && row.user_id === currentUserId));
+      if (opts.onlyMine) {
+        combined = currentUserId ? combined.filter((r) => r.userId === currentUserId) : [];
       }
 
       combined.sort((a, b) => (a.submittedAt < b.submittedAt ? 1 : -1));
