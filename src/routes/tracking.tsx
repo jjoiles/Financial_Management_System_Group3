@@ -5,7 +5,10 @@ import { useAuth } from "@/lib/auth-context";
 import StatusBadge from "@/components/StatusBadge";
 import WorkflowTracker from "@/components/WorkflowTracker";
 import RequestDetailDialog from "@/components/RequestDetailDialog";
-import { FileText, Loader2, Plus } from "lucide-react";
+import RequestSearchBar from "@/components/tracking/RequestSearchBar";
+import StatusFilterChips, { type StatusFilter } from "@/components/tracking/StatusFilterChips";
+import RequestCountSummary from "@/components/tracking/RequestCountSummary";
+import { FileText, Loader2, Plus, SearchX } from "lucide-react";
 
 export const Route = createFileRoute("/tracking")({
   component: TrackingPage,
@@ -21,14 +24,41 @@ function TrackingPage() {
   const auth = useAuth();
   const { data, loading } = useFinancialRequests();
   const [selected, setSelected] = useState<EnrichedRequest | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
 
   const myRequests = useMemo(
     () => data.filter((r) => !auth.user?.email || r.email === auth.user.email || r.prototype),
     [data, auth.user?.email],
   );
 
-  const pending = myRequests.filter((r) => r.status === "Submitted" || r.status === "Under Review");
-  const submitted = myRequests.filter((r) => r.status === "Approved" || r.status === "Rejected" || r.status === "Completed");
+  const statusCounts = useMemo(() => {
+    const counts: Record<StatusFilter, number> = {
+      All: myRequests.length,
+      Submitted: 0,
+      "Under Review": 0,
+      Approved: 0,
+      Rejected: 0,
+      Completed: 0,
+    };
+    for (const r of myRequests) counts[r.status] += 1;
+    return counts;
+  }, [myRequests]);
+
+  const filteredRequests = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return myRequests.filter((r) => {
+      if (statusFilter !== "All" && r.status !== statusFilter) return false;
+      if (!query) return true;
+      return r.title.toLowerCase().includes(query) || r.id.toLowerCase().includes(query);
+    });
+  }, [myRequests, search, statusFilter]);
+
+  const isFiltered = search.trim() !== "" || statusFilter !== "All";
+  const prototypeCount = filteredRequests.filter((r) => r.prototype).length;
+
+  const pending = filteredRequests.filter((r) => r.status === "Submitted" || r.status === "Under Review");
+  const submitted = filteredRequests.filter((r) => r.status === "Approved" || r.status === "Rejected" || r.status === "Completed");
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -42,6 +72,21 @@ function TrackingPage() {
         </Link>
       </div>
 
+      {!loading && myRequests.length > 0 && (
+        <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <RequestSearchBar value={search} onChange={setSearch} />
+            <RequestCountSummary
+              matching={filteredRequests.length}
+              total={myRequests.length}
+              prototypeCount={prototypeCount}
+              isFiltered={isFiltered}
+            />
+          </div>
+          <StatusFilterChips value={statusFilter} onChange={setStatusFilter} counts={statusCounts} />
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center rounded-2xl border border-border bg-card py-16 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
@@ -51,6 +96,17 @@ function TrackingPage() {
           <FileText className="mb-3 h-10 w-10 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">You haven't submitted any requests yet.</p>
           <Link to="/submit" className="mt-3 text-sm font-medium text-primary hover:underline">Create your first request</Link>
+        </div>
+      ) : filteredRequests.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 py-16">
+          <SearchX className="mb-3 h-8 w-8 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">No requests match your search and filters.</p>
+          <button
+            onClick={() => { setSearch(""); setStatusFilter("All"); }}
+            className="mt-3 text-sm font-medium text-primary hover:underline"
+          >
+            Clear search and filters
+          </button>
         </div>
       ) : (
         <div className="space-y-8">
@@ -82,7 +138,14 @@ function Group({ title, subtitle, requests, onSelect, emptyText }: { title: stri
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="truncate text-base font-semibold text-card-foreground">{req.title}</h3>
                     <StatusBadge status={req.status} />
-                    {req.prototype && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning">Prototype</span>}
+                    {req.prototype && (
+                      <span
+                        title="Saved locally on this device only — not stored in the backend"
+                        className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning"
+                      >
+                        Prototype · local only
+                      </span>
+                    )}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{req.id} · ${req.amount.toLocaleString()} · {req.fundingType} Fund</p>
                 </div>
