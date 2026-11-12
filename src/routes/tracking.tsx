@@ -28,8 +28,14 @@ function TrackingPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
 
   const myRequests = useMemo(
-    () => data.filter((r) => !auth.user?.email || r.email === auth.user.email || r.prototype),
-    [data, auth.user?.email],
+    () =>
+      data.filter((r) => {
+        if (!auth.user) return false;
+        // Local prototype rows: only show ones saved by this signed-in user.
+        if (r.prototype) return r.userId === auth.user.id;
+        return r.userId === auth.user.id || r.email === auth.user.email;
+      }),
+    [data, auth.user],
   );
 
   const statusCounts = useMemo(() => {
@@ -72,7 +78,7 @@ function TrackingPage() {
         </Link>
       </div>
 
-      {!loading && myRequests.length > 0 && (
+      {!loading && (
         <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <RequestSearchBar value={search} onChange={setSearch} />
