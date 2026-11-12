@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Loader2,
 } from "lucide-react";
+import { formatCurrency } from "@/lib/format";
 
 export const Route = createFileRoute("/")({
   component: OverviewPage,
@@ -91,7 +92,7 @@ function OverviewPage() {
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Total Requested Amount</p>
-            <p className="text-xl font-bold text-card-foreground">${totalAmount.toLocaleString()}</p>
+            <p className="text-xl font-bold text-card-foreground">{formatCurrency(totalAmount)}</p>
           </div>
         </div>
       </div>
@@ -131,7 +132,7 @@ function OverviewPage() {
                   <p className="text-xs text-muted-foreground">{req.id} · {req.department}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
-                  <span className="hidden text-sm font-medium text-card-foreground sm:inline">${req.amount.toLocaleString()}</span>
+                  <span className="hidden text-sm font-medium text-card-foreground sm:inline">{formatCurrency(req.amount)}</span>
                   <StatusBadge status={req.status} />
                 </div>
               </button>
@@ -185,7 +186,7 @@ function RequestList({
                 <p className="text-xs text-muted-foreground">{req.id} · {req.department} · {req.fundingType}</p>
               </div>
               <div className="flex shrink-0 items-center gap-3">
-                <span className="hidden text-sm font-medium text-card-foreground sm:inline">${req.amount.toLocaleString()}</span>
+                <span className="hidden text-sm font-medium text-card-foreground sm:inline">{formatCurrency(req.amount)}</span>
                 <StatusBadge status={req.status} />
               </div>
             </button>

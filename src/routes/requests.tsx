@@ -5,6 +5,7 @@ import StatusBadge from "@/components/StatusBadge";
 import RequestDetailDialog from "@/components/RequestDetailDialog";
 import { Search, Filter, Loader2, FileText } from "lucide-react";
 import type { FundingType, RequestStatus } from "@/lib/mock-data";
+import { formatCurrency } from "@/lib/format";
 
 export const Route = createFileRoute("/requests")({
   component: RequestsPage,
@@ -123,7 +124,7 @@ function Section({ title, count, requests, onSelect }: { title: string; count: n
               <td className="px-4 py-3 font-medium text-card-foreground">{r.title}</td>
               <td className="px-4 py-3 text-muted-foreground">{r.department}</td>
               <td className="px-4 py-3 text-muted-foreground">{r.fundingType}</td>
-              <td className="px-4 py-3 text-right font-medium text-card-foreground">${r.amount.toLocaleString()}</td>
+              <td className="px-4 py-3 text-right font-medium text-card-foreground">{formatCurrency(r.amount)}</td>
               <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
               <td className="px-4 py-3 text-xs text-muted-foreground">{r.submittedAt}</td>
             </tr>
@@ -143,7 +144,7 @@ function Section({ title, count, requests, onSelect }: { title: string; count: n
             </div>
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>{r.department} · {r.fundingType}</span>
-              <span className="font-medium text-card-foreground">${r.amount.toLocaleString()}</span>
+              <span className="font-medium text-card-foreground">{formatCurrency(r.amount)}</span>
             </div>
           </button>
         ))}

@@ -29,6 +29,7 @@ import {
   getReportingWindowData,
   type ReportingWindow,
 } from "@/lib/analytics-utils";
+import { formatCurrency } from "@/lib/format";
 
 // F17 requirement: real-time reporting dashboard route for "Real-Time Reporting Templates".
 export const Route = createFileRoute("/analytics")({
@@ -70,7 +71,7 @@ function AnalyticsPage() {
 
   const kpis = [
     { label: "Avg. Turnaround", value: "4.8 days" },
-    { label: "Avg. Request", value: `$${summary.avgAmount.toLocaleString()}` },
+    { label: "Avg. Request", value: formatCurrency(summary.avgAmount) },
     { label: "Pending", value: String(summary.pending) },
     { label: "Completed", value: String(summary.completed) },
   ];

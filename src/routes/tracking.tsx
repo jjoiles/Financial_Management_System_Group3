@@ -9,6 +9,7 @@ import RequestSearchBar from "@/components/tracking/RequestSearchBar";
 import StatusFilterChips, { type StatusFilter } from "@/components/tracking/StatusFilterChips";
 import RequestCountSummary from "@/components/tracking/RequestCountSummary";
 import { FileText, Loader2, Plus, SearchX } from "lucide-react";
+import { formatCurrency } from "@/lib/format";
 
 export const Route = createFileRoute("/tracking")({
   component: TrackingPage,
@@ -153,7 +154,7 @@ function Group({ title, subtitle, requests, onSelect, emptyText }: { title: stri
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{req.id} · ${req.amount.toLocaleString()} · {req.fundingType} Fund</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{req.id} · {formatCurrency(req.amount)} · {req.fundingType} Fund</p>
                 </div>
                 <div className="text-right text-xs">
                   <p className="text-muted-foreground">Submitted</p>
