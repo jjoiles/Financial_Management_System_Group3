@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   AUTO_GENERATED_METADATA_FIELDS,
   FILE_EXTRACTED_METADATA_FIELDS,
@@ -8,6 +8,7 @@ import {
   createRequestNumber,
   deriveAmountTier,
   deriveFiscalPeriod,
+  derivedMetadataSchema,
   extractAttachmentsMetadata,
   extractFileMetadata,
   generateDerivedMetadata,
@@ -208,6 +209,106 @@ describe("F4.1 & F4.2: Metadata requirements, file extraction, and derived rules
     expect(derived.requiresGrantValidation).toBe(true);
     expect(derived.requiresProgramOversight).toBe(false);
     expect(derived.isExpedited).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F18: deriveFiscalPeriod — fiscal calendar, UTC policy, invalid-date fallback
+// ---------------------------------------------------------------------------
+
+describe("deriveFiscalPeriod (F18 temporal policy)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each([
+    ["2026-01-15T12:00:00Z", "FY2026", "Q3"],
+    ["2026-02-15T12:00:00Z", "FY2026", "Q3"],
+    ["2026-03-15T12:00:00Z", "FY2026", "Q3"],
+    ["2026-04-15T12:00:00Z", "FY2026", "Q4"],
+    ["2026-05-15T12:00:00Z", "FY2026", "Q4"],
+    ["2026-06-15T12:00:00Z", "FY2026", "Q4"],
+    ["2026-07-15T12:00:00Z", "FY2027", "Q1"],
+    ["2026-08-15T12:00:00Z", "FY2027", "Q1"],
+    ["2026-09-15T12:00:00Z", "FY2027", "Q1"],
+    ["2026-10-15T12:00:00Z", "FY2027", "Q2"],
+    ["2026-11-15T12:00:00Z", "FY2027", "Q2"],
+    ["2026-12-15T12:00:00Z", "FY2027", "Q2"],
+  ])("maps %s to %s %s", (iso, fiscalYear, fiscalQuarter) => {
+    expect(deriveFiscalPeriod(new Date(iso))).toEqual({ fiscalYear, fiscalQuarter });
+  });
+
+  it("starts the new fiscal year exactly at July 1 00:00 UTC", () => {
+    expect(deriveFiscalPeriod(new Date("2026-06-30T23:59:59.999Z"))).toEqual({
+      fiscalYear: "FY2026",
+      fiscalQuarter: "Q4",
+    });
+    expect(deriveFiscalPeriod(new Date("2026-07-01T00:00:00.000Z"))).toEqual({
+      fiscalYear: "FY2027",
+      fiscalQuarter: "Q1",
+    });
+  });
+
+  it("changes quarter at each quarter boundary without changing fiscal year mid-year", () => {
+    expect(deriveFiscalPeriod(new Date("2026-09-30T23:59:59.999Z")).fiscalQuarter).toBe("Q1");
+    expect(deriveFiscalPeriod(new Date("2026-10-01T00:00:00.000Z")).fiscalQuarter).toBe("Q2");
+    expect(deriveFiscalPeriod(new Date("2026-12-31T23:59:59.999Z"))).toEqual({
+      fiscalYear: "FY2027",
+      fiscalQuarter: "Q2",
+    });
+    expect(deriveFiscalPeriod(new Date("2027-01-01T00:00:00.000Z"))).toEqual({
+      fiscalYear: "FY2027",
+      fiscalQuarter: "Q3",
+    });
+    expect(deriveFiscalPeriod(new Date("2027-03-31T23:59:59.999Z")).fiscalQuarter).toBe("Q3");
+    expect(deriveFiscalPeriod(new Date("2027-04-01T00:00:00.000Z")).fiscalQuarter).toBe("Q4");
+  });
+
+  it("evaluates offset timestamps in UTC, matching the SQL trigger", () => {
+    // June 30, 9 p.m. EDT is July 1, 01:00 UTC.
+    expect(deriveFiscalPeriod(new Date("2026-06-30T21:00:00-04:00"))).toEqual({
+      fiscalYear: "FY2027",
+      fiscalQuarter: "Q1",
+    });
+    // July 1, 00:30 at UTC+5 is still June 30 in UTC.
+    expect(deriveFiscalPeriod(new Date("2026-07-01T00:30:00+05:00"))).toEqual({
+      fiscalYear: "FY2026",
+      fiscalQuarter: "Q4",
+    });
+    // The same instant written with different offsets gives the same period.
+    expect(deriveFiscalPeriod(new Date("2026-06-30T20:00:00-04:00"))).toEqual(
+      deriveFiscalPeriod(new Date("2026-07-01T00:00:00Z")),
+    );
+  });
+
+  it("falls back to the current date for an invalid Date without throwing", () => {
+    vi.useFakeTimers();
+
+    vi.setSystemTime(new Date("2026-07-01T00:00:00Z"));
+    expect(deriveFiscalPeriod(new Date("not a date"))).toEqual({
+      fiscalYear: "FY2027",
+      fiscalQuarter: "Q1",
+    });
+
+    vi.setSystemTime(new Date("2026-05-20T12:00:00Z"));
+    expect(deriveFiscalPeriod(new Date(Number.NaN))).toEqual({
+      fiscalYear: "FY2026",
+      fiscalQuarter: "Q4",
+    });
+  });
+
+  it("uses the current date when called with no argument", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-01T15:00:00Z"));
+    expect(deriveFiscalPeriod()).toEqual({ fiscalYear: "FY2027", fiscalQuarter: "Q2" });
+  });
+
+  it("produces values accepted by derivedMetadataSchema", () => {
+    for (const month of [0, 3, 6, 9]) {
+      const { fiscalYear, fiscalQuarter } = deriveFiscalPeriod(new Date(Date.UTC(2026, month, 1)));
+      expect(derivedMetadataSchema.shape.fiscalYear.safeParse(fiscalYear).success).toBe(true);
+      expect(derivedMetadataSchema.shape.fiscalQuarter.safeParse(fiscalQuarter).success).toBe(true);
+    }
   });
 });
 

@@ -73,6 +73,11 @@ export const FUNDING_REVIEWERS: Record<FundingSourceKey, string> = {
 
 export type AmountTier = "standard" | "elevated" | "executive";
 
+/** Fiscal quarters in fiscal-year order: Q1 starts in July (see deriveFiscalPeriod). */
+export const FISCAL_QUARTERS = ["Q1", "Q2", "Q3", "Q4"] as const;
+
+export type FiscalQuarter = (typeof FISCAL_QUARTERS)[number];
+
 export const fileMetadataSchema = z.object({
   fileName: z.string().min(1).max(255),
   safeFileName: z.string().min(1).max(255),
@@ -86,7 +91,7 @@ export type FileAttachmentMetadata = z.infer<typeof fileMetadataSchema>;
 
 export const derivedMetadataSchema = z.object({
   fiscalYear: z.string().regex(/^FY\d{4}$/, "Fiscal year must match FYyyyy"),
-  fiscalQuarter: z.enum(["Q1", "Q2", "Q3", "Q4"]),
+  fiscalQuarter: z.enum(FISCAL_QUARTERS),
   amountTier: z.enum(["standard", "elevated", "executive"]),
   requiresGrantValidation: z.boolean(),
   requiresProgramOversight: z.boolean(),
@@ -262,31 +267,44 @@ export function extractAttachmentsMetadata(
 }
 
 /**
+ * Fiscal calendar constants. Months are 0-based to match Date#getUTCMonth()
+ * (0 = January, 6 = July, 11 = December).
+ */
+const FISCAL_YEAR_START_UTC_MONTH = 6; // July
+const MONTHS_PER_YEAR = 12;
+const MONTHS_PER_FISCAL_QUARTER = 3;
+
+/**
  * F4.2.4: Computes Howard University's fiscal year (`FYyyyy`) and fiscal quarter (`Q1`–`Q4`).
  * Howard University's fiscal year begins July 1 (e.g. July 2026 is FY2027 Q1).
+ *
+ * F18 timezone policy: the period is evaluated in UTC, so the result does not
+ * depend on the host's timezone. This must stay in sync with the
+ * f4_enforce_request_metadata() SQL trigger, which uses `AT TIME ZONE 'UTC'`.
+ * Because the boundaries are UTC midnights, a fiscal year or quarter boundary
+ * can fall on the previous calendar day in local time for timezones west of
+ * UTC (e.g. the evening of June 30 in the Americas is already July 1 in UTC).
+ *
+ * An invalid Date falls back to the current date rather than throwing.
  */
 export function deriveFiscalPeriod(date: Date = new Date()): {
   fiscalYear: string;
-  fiscalQuarter: "Q1" | "Q2" | "Q3" | "Q4";
+  fiscalQuarter: FiscalQuarter;
 } {
   const validDate = Number.isNaN(date.getTime()) ? new Date() : date;
-  const month = validDate.getUTCMonth(); // 0 = Jan, 6 = Jul
-  const calendarYear = validDate.getUTCFullYear();
-  const fyYear = month >= 6 ? calendarYear + 1 : calendarYear;
+  const utcMonth = validDate.getUTCMonth();
+  const utcYear = validDate.getUTCFullYear();
 
-  let fiscalQuarter: "Q1" | "Q2" | "Q3" | "Q4";
-  if (month >= 6 && month <= 8) {
-    fiscalQuarter = "Q1"; // Jul - Sep
-  } else if (month >= 9 && month <= 11) {
-    fiscalQuarter = "Q2"; // Oct - Dec
-  } else if (month >= 0 && month <= 2) {
-    fiscalQuarter = "Q3"; // Jan - Mar
-  } else {
-    fiscalQuarter = "Q4"; // Apr - Jun
-  }
+  // Months on or after July belong to the fiscal year that ends next June 30.
+  const fiscalYear = utcMonth >= FISCAL_YEAR_START_UTC_MONTH ? utcYear + 1 : utcYear;
+
+  // 0 for July, 1 for August, ... 11 for June.
+  const monthsIntoFiscalYear =
+    (utcMonth - FISCAL_YEAR_START_UTC_MONTH + MONTHS_PER_YEAR) % MONTHS_PER_YEAR;
+  const fiscalQuarter = FISCAL_QUARTERS[Math.floor(monthsIntoFiscalYear / MONTHS_PER_FISCAL_QUARTER)];
 
   return {
-    fiscalYear: `FY${fyYear}`,
+    fiscalYear: `FY${fiscalYear}`,
     fiscalQuarter,
   };
 }
