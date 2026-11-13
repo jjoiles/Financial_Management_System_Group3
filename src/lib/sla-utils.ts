@@ -49,11 +49,9 @@ export function calculateStageSla(
   const deadlineMs = start.getTime() + stage.durationHours * HOUR_IN_MS;
   const comparisonTime = end ?? now;
 
-  const elapsedHours =
-    (comparisonTime.getTime() - start.getTime()) / HOUR_IN_MS;
+  const elapsedHours = (comparisonTime.getTime() - start.getTime()) / HOUR_IN_MS;
 
-  const remainingHours =
-    (deadlineMs - comparisonTime.getTime()) / HOUR_IN_MS;
+  const remainingHours = (deadlineMs - comparisonTime.getTime()) / HOUR_IN_MS;
 
   let status: SlaStatus;
 
