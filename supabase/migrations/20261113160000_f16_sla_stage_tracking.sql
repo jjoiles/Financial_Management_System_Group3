@@ -84,7 +84,100 @@ CREATE TRIGGER update_approval_stage_tracking_updated_at
 ALTER TABLE public.approval_stage_tracking
   ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Requesters and reviewers can view approval stage tracking"
+-- ============================================================
+-- SECURE F16 AUTHORIZATION HELPERS
+-- ============================================================
+
+-- Checks whether the currently authenticated user is an
+-- administrator, reviewer, or leadership member.
+--
+-- SECURITY DEFINER allows the function to read user_roles
+-- without requiring users to have direct elevated privileges.
+
+CREATE OR REPLACE FUNCTION public.f16_is_admin_or_reviewer()
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.user_roles ur
+    WHERE ur.user_id = auth.uid()
+      AND ur.role IN (
+        'admin'::public.app_role,
+        'reviewer'::public.app_role,
+        'leadership'::public.app_role
+      )
+  );
+$$;
+
+REVOKE ALL
+ON FUNCTION public.f16_is_admin_or_reviewer()
+FROM PUBLIC;
+
+REVOKE ALL
+ON FUNCTION public.f16_is_admin_or_reviewer()
+FROM anon;
+
+GRANT EXECUTE
+ON FUNCTION public.f16_is_admin_or_reviewer()
+TO authenticated;
+
+-- Checks whether the authenticated user owns the request
+-- or has an authorized administrative/reviewer role.
+--
+-- This function reads financial_requests under its owner
+-- privileges, avoiding nested RLS permission conflicts.
+
+CREATE OR REPLACE FUNCTION public.f16_can_view_approval_stage(
+  _request_id UUID
+)
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.financial_requests fr
+    WHERE fr.id = _request_id
+      AND (
+        fr.user_id = auth.uid()
+        OR EXISTS (
+          SELECT 1
+          FROM public.user_roles ur
+          WHERE ur.user_id = auth.uid()
+            AND ur.role IN (
+              'admin'::public.app_role,
+              'reviewer'::public.app_role,
+              'leadership'::public.app_role
+            )
+        )
+      )
+  );
+$$;
+
+REVOKE ALL
+ON FUNCTION public.f16_can_view_approval_stage(UUID)
+FROM PUBLIC;
+
+REVOKE ALL
+ON FUNCTION public.f16_can_view_approval_stage(UUID)
+FROM anon;
+
+GRANT EXECUTE
+ON FUNCTION public.f16_can_view_approval_stage(UUID)
+TO authenticated;
+
+-- ============================================================
+-- SELECT POLICY
+-- ============================================================
+
+DROP POLICY IF EXISTS
+  "Requesters and reviewers can view approval stage tracking"
   ON public.approval_stage_tracking;
 
 CREATE POLICY "Requesters and reviewers can view approval stage tracking"
@@ -92,18 +185,15 @@ ON public.approval_stage_tracking
 FOR SELECT
 TO authenticated
 USING (
-  EXISTS (
-    SELECT 1
-    FROM public.financial_requests fr
-    WHERE fr.id = approval_stage_tracking.request_id
-      AND (
-        fr.user_id = auth.uid()
-        OR public.is_admin_or_reviewer(auth.uid())
-      )
-  )
+  public.f16_can_view_approval_stage(request_id)
 );
 
-DROP POLICY IF EXISTS "Reviewers can insert approval stage tracking"
+-- ============================================================
+-- INSERT POLICY
+-- ============================================================
+
+DROP POLICY IF EXISTS
+  "Reviewers can insert approval stage tracking"
   ON public.approval_stage_tracking;
 
 CREATE POLICY "Reviewers can insert approval stage tracking"
@@ -111,10 +201,15 @@ ON public.approval_stage_tracking
 FOR INSERT
 TO authenticated
 WITH CHECK (
-  public.is_admin_or_reviewer(auth.uid())
+  public.f16_is_admin_or_reviewer()
 );
 
-DROP POLICY IF EXISTS "Reviewers can update approval stage tracking"
+-- ============================================================
+-- UPDATE POLICY
+-- ============================================================
+
+DROP POLICY IF EXISTS
+  "Reviewers can update approval stage tracking"
   ON public.approval_stage_tracking;
 
 CREATE POLICY "Reviewers can update approval stage tracking"
@@ -122,13 +217,18 @@ ON public.approval_stage_tracking
 FOR UPDATE
 TO authenticated
 USING (
-  public.is_admin_or_reviewer(auth.uid())
+  public.f16_is_admin_or_reviewer()
 )
 WITH CHECK (
-  public.is_admin_or_reviewer(auth.uid())
+  public.f16_is_admin_or_reviewer()
 );
 
-DROP POLICY IF EXISTS "Reviewers can delete approval stage tracking"
+-- ============================================================
+-- DELETE POLICY
+-- ============================================================
+
+DROP POLICY IF EXISTS
+  "Reviewers can delete approval stage tracking"
   ON public.approval_stage_tracking;
 
 CREATE POLICY "Reviewers can delete approval stage tracking"
@@ -136,8 +236,12 @@ ON public.approval_stage_tracking
 FOR DELETE
 TO authenticated
 USING (
-  public.is_admin_or_reviewer(auth.uid())
+  public.f16_is_admin_or_reviewer()
 );
+
+-- ============================================================
+-- TABLE PERMISSIONS
+-- ============================================================
 
 GRANT SELECT, INSERT, UPDATE, DELETE
 ON public.approval_stage_tracking
@@ -187,7 +291,7 @@ BEGIN
 
   -- Verify the caller is authenticated and authorized.
   -- Check roles directly to avoid executing the restricted
-  -- is_admin_or_reviewer helper function.
+  -- project-wide is_admin_or_reviewer helper function.
 
   IF auth.uid() IS NULL OR (
     request_row.user_id <> auth.uid()

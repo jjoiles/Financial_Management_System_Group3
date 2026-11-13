@@ -1,368 +1,423 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  // instead of createClient<Database, { PostgrestVersion: "XX" }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
-  }
+    PostgrestVersion: "14.17";
+  };
   public: {
     Tables: {
+      approval_stage_tracking: {
+        Row: {
+          completed_at: string | null;
+          created_at: string;
+          deadline_at: string;
+          duration_hours: number;
+          id: string;
+          queue_id: string;
+          request_id: string;
+          stage_name: string;
+          stage_order: number;
+          started_at: string;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          completed_at?: string | null;
+          created_at?: string;
+          deadline_at: string;
+          duration_hours: number;
+          id?: string;
+          queue_id: string;
+          request_id: string;
+          stage_name: string;
+          stage_order: number;
+          started_at?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          completed_at?: string | null;
+          created_at?: string;
+          deadline_at?: string;
+          duration_hours?: number;
+          id?: string;
+          queue_id?: string;
+          request_id?: string;
+          stage_name?: string;
+          stage_order?: number;
+          started_at?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "approval_stage_tracking_request_id_fkey";
+            columns: ["request_id"];
+            isOneToOne: false;
+            referencedRelation: "financial_requests";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       financial_requests: {
         Row: {
-          amount: number
-          created_at: string
-          department: string
-          description: string
-          funding_source: Database["public"]["Enums"]["funding_source"]
-          grant_number: string | null
-          id: string
-          metadata: Json
-          needed_by: string
-          principal_investigator: string | null
-          priority: Database["public"]["Enums"]["request_priority"]
-          request_number: string
-          requester_email: string
-          routed_to: string | null
-          status: Database["public"]["Enums"]["request_status"]
-          title: string
-          university_program: string | null
-          updated_at: string
-          user_id: string
-          workflow_triggered_at: string | null
-        }
+          amount: number;
+          created_at: string;
+          department: string;
+          description: string;
+          funding_source: Database["public"]["Enums"]["funding_source"];
+          grant_number: string | null;
+          id: string;
+          metadata: Json;
+          needed_by: string;
+          principal_investigator: string | null;
+          priority: Database["public"]["Enums"]["request_priority"];
+          request_number: string;
+          requester_email: string;
+          routed_to: string | null;
+          status: Database["public"]["Enums"]["request_status"];
+          title: string;
+          university_program: string | null;
+          updated_at: string;
+          user_id: string;
+          workflow_triggered_at: string | null;
+        };
         Insert: {
-          amount: number
-          created_at?: string
-          department: string
-          description: string
-          funding_source: Database["public"]["Enums"]["funding_source"]
-          grant_number?: string | null
-          id?: string
-          metadata?: Json
-          needed_by: string
-          principal_investigator?: string | null
-          priority?: Database["public"]["Enums"]["request_priority"]
-          request_number?: string
-          requester_email: string
-          routed_to?: string | null
-          status?: Database["public"]["Enums"]["request_status"]
-          title: string
-          university_program?: string | null
-          updated_at?: string
-          user_id: string
-          workflow_triggered_at?: string | null
-        }
+          amount: number;
+          created_at?: string;
+          department: string;
+          description: string;
+          funding_source: Database["public"]["Enums"]["funding_source"];
+          grant_number?: string | null;
+          id?: string;
+          metadata?: Json;
+          needed_by: string;
+          principal_investigator?: string | null;
+          priority?: Database["public"]["Enums"]["request_priority"];
+          request_number?: string;
+          requester_email: string;
+          routed_to?: string | null;
+          status?: Database["public"]["Enums"]["request_status"];
+          title: string;
+          university_program?: string | null;
+          updated_at?: string;
+          user_id: string;
+          workflow_triggered_at?: string | null;
+        };
         Update: {
-          amount?: number
-          created_at?: string
-          department?: string
-          description?: string
-          funding_source?: Database["public"]["Enums"]["funding_source"]
-          grant_number?: string | null
-          id?: string
-          metadata?: Json
-          needed_by?: string
-          principal_investigator?: string | null
-          priority?: Database["public"]["Enums"]["request_priority"]
-          request_number?: string
-          requester_email?: string
-          routed_to?: string | null
-          status?: Database["public"]["Enums"]["request_status"]
-          title?: string
-          university_program?: string | null
-          updated_at?: string
-          user_id?: string
-          workflow_triggered_at?: string | null
-        }
-        Relationships: []
-      }
+          amount?: number;
+          created_at?: string;
+          department?: string;
+          description?: string;
+          funding_source?: Database["public"]["Enums"]["funding_source"];
+          grant_number?: string | null;
+          id?: string;
+          metadata?: Json;
+          needed_by?: string;
+          principal_investigator?: string | null;
+          priority?: Database["public"]["Enums"]["request_priority"];
+          request_number?: string;
+          requester_email?: string;
+          routed_to?: string | null;
+          status?: Database["public"]["Enums"]["request_status"];
+          title?: string;
+          university_program?: string | null;
+          updated_at?: string;
+          user_id?: string;
+          workflow_triggered_at?: string | null;
+        };
+        Relationships: [];
+      };
       profiles: {
         Row: {
-          created_at: string
-          department: string | null
-          display_name: string
-          id: string
-          phone: string | null
-          title: string | null
-          updated_at: string
-          user_id: string
-        }
+          created_at: string;
+          department: string | null;
+          display_name: string;
+          id: string;
+          phone: string | null;
+          title: string | null;
+          updated_at: string;
+          user_id: string;
+        };
         Insert: {
-          created_at?: string
-          department?: string | null
-          display_name?: string
-          id?: string
-          phone?: string | null
-          title?: string | null
-          updated_at?: string
-          user_id: string
-        }
+          created_at?: string;
+          department?: string | null;
+          display_name?: string;
+          id?: string;
+          phone?: string | null;
+          title?: string | null;
+          updated_at?: string;
+          user_id: string;
+        };
         Update: {
-          created_at?: string
-          department?: string | null
-          display_name?: string
-          id?: string
-          phone?: string | null
-          title?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
+          created_at?: string;
+          department?: string | null;
+          display_name?: string;
+          id?: string;
+          phone?: string | null;
+          title?: string | null;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       request_attachments: {
         Row: {
-          content_type: string | null
-          created_at: string
-          file_name: string
-          file_path: string
-          file_size: number | null
-          id: string
-          request_id: string
-          user_id: string
-        }
+          content_type: string | null;
+          created_at: string;
+          file_name: string;
+          file_path: string;
+          file_size: number | null;
+          id: string;
+          request_id: string;
+          user_id: string;
+        };
         Insert: {
-          content_type?: string | null
-          created_at?: string
-          file_name: string
-          file_path: string
-          file_size?: number | null
-          id?: string
-          request_id: string
-          user_id: string
-        }
+          content_type?: string | null;
+          created_at?: string;
+          file_name: string;
+          file_path: string;
+          file_size?: number | null;
+          id?: string;
+          request_id: string;
+          user_id: string;
+        };
         Update: {
-          content_type?: string | null
-          created_at?: string
-          file_name?: string
-          file_path?: string
-          file_size?: number | null
-          id?: string
-          request_id?: string
-          user_id?: string
-        }
+          content_type?: string | null;
+          created_at?: string;
+          file_name?: string;
+          file_path?: string;
+          file_size?: number | null;
+          id?: string;
+          request_id?: string;
+          user_id?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "request_attachments_request_id_fkey"
-            columns: ["request_id"]
-            isOneToOne: false
-            referencedRelation: "financial_requests"
-            referencedColumns: ["id"]
+            foreignKeyName: "request_attachments_request_id_fkey";
+            columns: ["request_id"];
+            isOneToOne: false;
+            referencedRelation: "financial_requests";
+            referencedColumns: ["id"];
           },
-        ]
-      }
+        ];
+      };
       user_roles: {
         Row: {
-          created_at: string
-          id: string
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
+          created_at: string;
+          id: string;
+          role: Database["public"]["Enums"]["app_role"];
+          user_id: string;
+        };
         Insert: {
-          created_at?: string
-          id?: string
-          role: Database["public"]["Enums"]["app_role"]
-          user_id: string
-        }
+          created_at?: string;
+          id?: string;
+          role: Database["public"]["Enums"]["app_role"];
+          user_id: string;
+        };
         Update: {
-          created_at?: string
-          id?: string
-          role?: Database["public"]["Enums"]["app_role"]
-          user_id?: string
-        }
-        Relationships: []
-      }
+          created_at?: string;
+          id?: string;
+          role?: Database["public"]["Enums"]["app_role"];
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       workflow_events: {
         Row: {
-          actor_user_id: string | null
-          created_at: string
-          event_type: string
-          id: string
-          message: string
-          metadata: Json
-          request_id: string
-        }
+          actor_user_id: string | null;
+          created_at: string;
+          event_type: string;
+          id: string;
+          message: string;
+          metadata: Json;
+          request_id: string;
+        };
         Insert: {
-          actor_user_id?: string | null
-          created_at?: string
-          event_type: string
-          id?: string
-          message: string
-          metadata?: Json
-          request_id: string
-        }
+          actor_user_id?: string | null;
+          created_at?: string;
+          event_type: string;
+          id?: string;
+          message: string;
+          metadata?: Json;
+          request_id: string;
+        };
         Update: {
-          actor_user_id?: string | null
-          created_at?: string
-          event_type?: string
-          id?: string
-          message?: string
-          metadata?: Json
-          request_id?: string
-        }
+          actor_user_id?: string | null;
+          created_at?: string;
+          event_type?: string;
+          id?: string;
+          message?: string;
+          metadata?: Json;
+          request_id?: string;
+        };
         Relationships: [
           {
-            foreignKeyName: "workflow_events_request_id_fkey"
-            columns: ["request_id"]
-            isOneToOne: false
-            referencedRelation: "financial_requests"
-            referencedColumns: ["id"]
+            foreignKeyName: "workflow_events_request_id_fkey";
+            columns: ["request_id"];
+            isOneToOne: false;
+            referencedRelation: "financial_requests";
+            referencedColumns: ["id"];
           },
-        ]
-      }
-    }
+        ];
+      };
+    };
     Views: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Functions: {
+      f16_can_view_approval_stage: {
+        Args: { _request_id: string };
+        Returns: boolean;
+      };
+      f16_is_admin_or_reviewer: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+      f16_start_initial_approval_stage: {
+        Args: { _request_id: string };
+        Returns: string;
+      };
       has_role: {
         Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
-        Returns: boolean
-      }
-      is_admin_or_reviewer: { Args: { _user_id: string }; Returns: boolean }
-    }
+          _role: Database["public"]["Enums"]["app_role"];
+          _user_id: string;
+        };
+        Returns: boolean;
+      };
+      is_admin_or_reviewer: {
+        Args: { _user_id: string };
+        Returns: boolean;
+      };
+    };
     Enums: {
-      app_role: "admin" | "reviewer" | "leadership" | "requester"
-      funding_source: "department" | "research" | "university"
-      request_priority: "low" | "medium" | "high"
-      request_status:
-        | "submitted"
-        | "under_review"
-        | "approved"
-        | "rejected"
-        | "completed"
-    }
+      app_role: "admin" | "reviewer" | "leadership" | "requester";
+      funding_source: "department" | "research" | "university";
+      request_priority: "low" | "medium" | "high";
+      request_status: "submitted" | "under_review" | "approved" | "rejected" | "completed";
+    };
     CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-}
+      [_ in never]: never;
+    };
+  };
+};
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">];
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
       DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R
+      Row: infer R;
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] & DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R;
       }
       ? R
       : never
-    : never
+    : never;
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
+      Insert: infer I;
     }
     ? I
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
+        Insert: infer I;
       }
       ? I
       : never
-    : never
+    : never;
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
+      Update: infer U;
     }
     ? U
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
+        Update: infer U;
       }
       ? U
       : never
-    : never
+    : never;
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
+    : never;
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
+  schema: keyof DatabaseWithoutInternals;
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
+    : never;
 
 export const Constants = {
   public: {
@@ -370,13 +425,7 @@ export const Constants = {
       app_role: ["admin", "reviewer", "leadership", "requester"],
       funding_source: ["department", "research", "university"],
       request_priority: ["low", "medium", "high"],
-      request_status: [
-        "submitted",
-        "under_review",
-        "approved",
-        "rejected",
-        "completed",
-      ],
+      request_status: ["submitted", "under_review", "approved", "rejected", "completed"],
     },
   },
-} as const
+} as const;
