@@ -24,25 +24,44 @@ function RequestsPage() {
   const [fundingFilter, setFundingFilter] = useState<FundingType | "">("");
   const [selected, setSelected] = useState<EnrichedRequest | null>(null);
 
-  const filtered = useMemo(() => data.filter((r) => {
-    const q = search.toLowerCase();
-    if (q && !r.title.toLowerCase().includes(q) && !r.id.toLowerCase().includes(q) && !r.email.toLowerCase().includes(q) && !r.department.toLowerCase().includes(q)) return false;
-    if (statusFilter && r.status !== statusFilter) return false;
-    if (fundingFilter && r.fundingType !== fundingFilter) return false;
-    return true;
-  }), [data, search, statusFilter, fundingFilter]);
+  const filtered = useMemo(
+    () =>
+      data.filter((r) => {
+        const q = search.toLowerCase();
+        if (
+          q &&
+          !r.title.toLowerCase().includes(q) &&
+          !r.id.toLowerCase().includes(q) &&
+          !r.email.toLowerCase().includes(q) &&
+          !r.department.toLowerCase().includes(q)
+        )
+          return false;
+        if (statusFilter && r.status !== statusFilter) return false;
+        if (fundingFilter && r.fundingType !== fundingFilter) return false;
+        return true;
+      }),
+    [data, search, statusFilter, fundingFilter],
+  );
 
   const pending = filtered.filter((r) => r.status === "Submitted" || r.status === "Under Review");
-  const decided = filtered.filter((r) => r.status === "Approved" || r.status === "Rejected" || r.status === "Completed");
+  const decided = filtered.filter(
+    (r) => r.status === "Approved" || r.status === "Rejected" || r.status === "Completed",
+  );
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">All Requests</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{filtered.length} requests {search || statusFilter || fundingFilter ? "matched" : "total"}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {filtered.length} requests{" "}
+            {search || statusFilter || fundingFilter ? "matched" : "total"}
+          </p>
         </div>
-        <button onClick={() => reload()} className="self-start rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent">
+        <button
+          onClick={() => reload()}
+          className="self-start rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent"
+        >
           Refresh
         </button>
       </div>
@@ -59,7 +78,11 @@ function RequestsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-muted-foreground" />
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RequestStatus | "")} className="rounded-md border border-input bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as RequestStatus | "")}
+            className="rounded-md border border-input bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          >
             <option value="">All Statuses</option>
             <option value="Submitted">Submitted</option>
             <option value="Under Review">Under Review</option>
@@ -67,7 +90,11 @@ function RequestsPage() {
             <option value="Rejected">Rejected</option>
             <option value="Completed">Completed</option>
           </select>
-          <select value={fundingFilter} onChange={(e) => setFundingFilter(e.target.value as FundingType | "")} className="rounded-md border border-input bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+          <select
+            value={fundingFilter}
+            onChange={(e) => setFundingFilter(e.target.value as FundingType | "")}
+            className="rounded-md border border-input bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          >
             <option value="">All Funding</option>
             <option value="Department">Department</option>
             <option value="R">Research (R)</option>
@@ -76,7 +103,11 @@ function RequestsPage() {
         </div>
       </div>
 
-      {error && <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+      {error && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center rounded-2xl border border-border bg-card py-16 text-sm text-muted-foreground">
@@ -86,46 +117,95 @@ function RequestsPage() {
         <EmptyState />
       ) : (
         <div className="space-y-6">
-          <Section title="Pending Requests" count={pending.length} requests={pending} onSelect={setSelected} />
-          <Section title="Submitted & Decided" count={decided.length} requests={decided} onSelect={setSelected} />
+          <Section
+            title="Pending Requests"
+            count={pending.length}
+            requests={pending}
+            onSelect={setSelected}
+          />
+          <Section
+            title="Submitted & Decided"
+            count={decided.length}
+            requests={decided}
+            onSelect={setSelected}
+          />
         </div>
       )}
 
-      <RequestDetailDialog request={selected} onClose={() => setSelected(null)} />
+      <RequestDetailDialog
+        request={selected}
+        onClose={() => setSelected(null)}
+        onDecisionRecorded={async () => {
+          setSelected(null);
+          await reload();
+        }}
+      />
     </div>
   );
 }
 
-function Section({ title, count, requests, onSelect }: { title: string; count: number; requests: EnrichedRequest[]; onSelect: (r: EnrichedRequest) => void }) {
+function Section({
+  title,
+  count,
+  requests,
+  onSelect,
+}: {
+  title: string;
+  count: number;
+  requests: EnrichedRequest[];
+  onSelect: (r: EnrichedRequest) => void;
+}) {
   if (requests.length === 0) return null;
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
       <div className="flex items-center justify-between border-b border-border px-5 py-3">
         <h2 className="text-sm font-semibold text-card-foreground">{title}</h2>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{count}</span>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+          {count}
+        </span>
       </div>
       {/* Desktop table */}
       <table className="hidden w-full text-sm md:table">
         <thead>
           <tr className="border-b border-border bg-muted/40">
             <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">ID</th>
-            <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Title</th>
-            <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Department</th>
-            <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Funding</th>
-            <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">Amount</th>
-            <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Status</th>
-            <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">Date</th>
+            <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+              Title
+            </th>
+            <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+              Department
+            </th>
+            <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+              Funding
+            </th>
+            <th className="px-4 py-2.5 text-right text-xs font-medium text-muted-foreground">
+              Amount
+            </th>
+            <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+              Status
+            </th>
+            <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">
+              Date
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {requests.map((r) => (
-            <tr key={r.uuid} onClick={() => onSelect(r)} className="cursor-pointer transition hover:bg-accent/40">
+            <tr
+              key={r.uuid}
+              onClick={() => onSelect(r)}
+              className="cursor-pointer transition hover:bg-accent/40"
+            >
               <td className="px-4 py-3 font-mono text-xs text-primary">{r.id}</td>
               <td className="px-4 py-3 font-medium text-card-foreground">{r.title}</td>
               <td className="px-4 py-3 text-muted-foreground">{r.department}</td>
               <td className="px-4 py-3 text-muted-foreground">{r.fundingType}</td>
-              <td className="px-4 py-3 text-right font-medium text-card-foreground">{formatCurrency(r.amount)}</td>
-              <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
+              <td className="px-4 py-3 text-right font-medium text-card-foreground">
+                {formatCurrency(r.amount)}
+              </td>
+              <td className="px-4 py-3">
+                <StatusBadge status={r.status} />
+              </td>
               <td className="px-4 py-3 text-xs text-muted-foreground">{r.submittedAt}</td>
             </tr>
           ))}
@@ -134,7 +214,11 @@ function Section({ title, count, requests, onSelect }: { title: string; count: n
       {/* Mobile cards */}
       <div className="divide-y divide-border md:hidden">
         {requests.map((r) => (
-          <button key={r.uuid} onClick={() => onSelect(r)} className="flex w-full flex-col gap-2 px-4 py-3 text-left transition hover:bg-accent/40">
+          <button
+            key={r.uuid}
+            onClick={() => onSelect(r)}
+            className="flex w-full flex-col gap-2 px-4 py-3 text-left transition hover:bg-accent/40"
+          >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-mono text-[11px] text-primary">{r.id}</p>
@@ -143,7 +227,9 @@ function Section({ title, count, requests, onSelect }: { title: string; count: n
               <StatusBadge status={r.status} />
             </div>
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{r.department} · {r.fundingType}</span>
+              <span>
+                {r.department} · {r.fundingType}
+              </span>
               <span className="font-medium text-card-foreground">{formatCurrency(r.amount)}</span>
             </div>
           </button>

@@ -1,19 +1,25 @@
 import { createServerFn } from "@tanstack/react-start";
+
 import { z } from "zod";
+
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
 import { logger } from "@/lib/logger";
+
 import { routeRequest } from "@/lib/routing/engine";
+
 import { buildFlowPayload, postToFlow, type RequestRow } from "./power-automate";
 
 // F7: Power Automate Workflow Initialization
 // F16: Initial SLA Stage Tracking
 //
 // Runs on the server after a request is saved. It:
-//   1. Loads the request as the signed-in user.
-//   2. Recomputes routing.
-//   3. Starts the Power Automate workflow.
-//   4. Records the workflow outcome.
-//   5. Starts the first approval-stage SLA timer.
+// 1. Loads the request as the signed-in user.
+// 2. Recomputes and saves complete routing metadata.
+// 3. Checks whether the workflow was already initialized.
+// 4. Starts the Power Automate workflow when necessary.
+// 5. Records the workflow outcome.
+// 6. Starts the first approval-stage SLA timer.
 //
 // The initial SLA stage is created through the secure F16 database function.
 // Repeated calls do not create duplicate SLA stage records.
@@ -96,7 +102,8 @@ export const initializeWorkflow = createServerFn({ method: "POST" })
       }
     };
 
-    // 1. Idempotency
+    // 1. Check whether this workflow was previously initialized.
+    // Do not return yet: routing metadata must be repaired first.
     const existing = await db
       .from("workflow_events")
       .select("id, metadata")
@@ -104,23 +111,7 @@ export const initializeWorkflow = createServerFn({ method: "POST" })
       .eq("event_type", "workflow_initialized")
       .limit(1);
 
-    if (!existing.error && existing.data?.length) {
-      const previousMode =
-        (existing.data[0].metadata as { mode?: WorkflowMode } | null)?.mode ?? "simulated";
-
-      // Recover missing initial SLA tracking if workflow was already started.
-      await startInitialSlaStage();
-
-      return {
-        mode: previousMode,
-        alreadyInitialized: true,
-        attempts: 0,
-        routedTo: request.routed_to ?? "",
-        message: "Workflow was already started for this request.",
-      };
-    }
-
-    // 2. Server-side routing
+    // 2. Recompute the authoritative approval routing.
     const routing = routeRequest({
       fundingSource: request.funding_source,
       amount: Number(request.amount),
@@ -129,7 +120,44 @@ export const initializeWorkflow = createServerFn({ method: "POST" })
       today: new Date(request.created_at),
     });
 
-    if (request.routed_to !== routing.primaryLabel || !request.metadata?.routing) {
+    // 3. Verify that the saved routing contains the complete approval chain.
+    const savedRouting = request.metadata?.routing as
+      | {
+          primaryQueue?: unknown;
+          primaryLabel?: unknown;
+          approvalChain?: unknown;
+        }
+      | undefined;
+
+    const savedApprovalChain = savedRouting?.approvalChain;
+
+    const hasCompleteRouting =
+      savedRouting?.primaryQueue === routing.primaryQueue &&
+      savedRouting?.primaryLabel === routing.primaryLabel &&
+      Array.isArray(savedApprovalChain) &&
+      savedApprovalChain.length === routing.approvalChain.length &&
+      savedApprovalChain.every((savedStep, index) => {
+        if (typeof savedStep !== "object" || savedStep === null) {
+          return false;
+        }
+
+        const storedStep = savedStep as {
+          step?: unknown;
+          queue?: unknown;
+          label?: unknown;
+        };
+
+        const expectedStep = routing.approvalChain[index];
+
+        return (
+          storedStep.step === expectedStep.step &&
+          storedStep.queue === expectedStep.queue &&
+          storedStep.label === expectedStep.label
+        );
+      });
+
+    // 4. Repair incomplete routing metadata before proceeding.
+    if (request.routed_to !== routing.primaryLabel || !hasCompleteRouting) {
       const { error: routingError } = await db
         .from("financial_requests")
         .update({
@@ -141,10 +169,34 @@ export const initializeWorkflow = createServerFn({ method: "POST" })
       if (routingError) {
         throw new Error(`Could not save request routing: ${routingError.message}`);
       }
+
+      logger.info("workflow.routing_metadata_repaired", {
+        requestId: request.id,
+        requestNumber: request.request_number,
+        approvalStages: routing.approvalChain.length,
+      });
     }
 
-    // 3. Send to Power Automate
+    // 5. If already initialized, recover SLA tracking and return.
+    // Routing metadata has now been checked and repaired.
+    if (!existing.error && existing.data?.length) {
+      const previousMode =
+        (existing.data[0].metadata as { mode?: WorkflowMode } | null)?.mode ?? "simulated";
+
+      await startInitialSlaStage();
+
+      return {
+        mode: previousMode,
+        alreadyInitialized: true,
+        attempts: 0,
+        routedTo: routing.primaryLabel,
+        message: "Workflow was already started for this request.",
+      };
+    }
+
+    // 6. Send to Power Automate.
     const flowUrl = process.env.POWER_AUTOMATE_FLOW_URL;
+
     const payload = buildFlowPayload(request, routing, process.env.APP_BASE_URL);
 
     const chain = routing.approvalChain.map((step) => step.label);
@@ -198,7 +250,7 @@ export const initializeWorkflow = createServerFn({ method: "POST" })
       logger.info("workflow.initialized", logContext);
     }
 
-    // 4. Record the workflow outcome.
+    // 7. Record the workflow outcome.
     const recorded = await db.from("workflow_events").insert({
       request_id: request.id,
       actor_user_id: context.userId,
@@ -223,7 +275,7 @@ export const initializeWorkflow = createServerFn({ method: "POST" })
       });
     }
 
-    // 5. Update workflow timestamp and start SLA tracking.
+    // 8. Update workflow timestamp and start SLA tracking.
     if (mode !== "failed") {
       const { error: updateError } = await db
         .from("financial_requests")
