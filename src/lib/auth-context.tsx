@@ -22,7 +22,12 @@ type AuthContextType = {
   mfaVerified: boolean;
   roles: UserRole[];
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, displayName: string, department: string) => Promise<void>;
+  signUp: (
+    email: string,
+    password: string,
+    displayName: string,
+    department: string,
+  ) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   verifyMfa: (code: string) => Promise<void>;
   enrollTotp: () => Promise<{ factorId: string; qrCode: string; secret: string }>;
@@ -55,7 +60,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const hasVerifiedTotp = !!factors.data?.totp?.some((factor) => factor.status === "verified");
     setHasTotpFactor(hasVerifiedTotp);
     setMfaVerified(aal.data?.currentLevel === "aal2");
-    setNeedsMfa(hasVerifiedTotp && aal.data?.currentLevel !== "aal2" && aal.data?.nextLevel === "aal2");
+    setNeedsMfa(
+      hasVerifiedTotp && aal.data?.currentLevel !== "aal2" && aal.data?.nextLevel === "aal2",
+    );
   };
 
   const loadProfile = async (activeUser: User | null) => {
@@ -72,32 +79,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       phone: null,
     };
 
-    const { data: profileData, error: profileError } = await withTransientRetry(() => supabase
-      .from("profiles")
-      .select("display_name, department, title, phone")
-      .eq("user_id", activeUser.id)
-      .maybeSingle());
+    // Load the profile independently.
+    try {
+      const { data: profileData, error: profileError } = await withTransientRetry(() =>
+        supabase
+          .from("profiles")
+          .select("display_name, department, title, phone")
+          .eq("user_id", activeUser.id)
+          .maybeSingle(),
+      );
 
-    if (profileError) {
+      if (profileError) {
+        setProfile(fallbackProfile);
+      } else if (!profileData) {
+        const { data: createdProfile } = await supabase
+          .from("profiles")
+          .upsert(
+            {
+              user_id: activeUser.id,
+              display_name: fallbackProfile.display_name,
+              department: fallbackProfile.department,
+            },
+            { onConflict: "user_id" },
+          )
+          .select("display_name, department, title, phone")
+          .maybeSingle();
+
+        setProfile(createdProfile ?? fallbackProfile);
+      } else {
+        setProfile(profileData);
+      }
+    } catch {
       setProfile(fallbackProfile);
+    }
+
+    // Load database roles regardless of profile-loading outcome.
+    try {
+      const { data: roleData, error: roleError } = await withTransientRetry(() =>
+        supabase.from("user_roles").select("role").eq("user_id", activeUser.id),
+      );
+
+      if (roleError) {
+        setRoles(["requester"]);
+        return;
+      }
+
+      const mapped = roleData
+        ?.map((item: { role: string }) => mapRole(item.role))
+        .filter(Boolean) as UserRole[] | undefined;
+
+      setRoles(mapped?.length ? mapped : ["requester"]);
+    } catch {
       setRoles(["requester"]);
-      return;
     }
-
-    if (!profileData) {
-      const { data: createdProfile } = await supabase.from("profiles").upsert({
-        user_id: activeUser.id,
-        display_name: fallbackProfile.display_name,
-        department: fallbackProfile.department,
-      }, { onConflict: "user_id" }).select("display_name, department, title, phone").maybeSingle();
-      setProfile(createdProfile ?? fallbackProfile);
-    } else {
-      setProfile(profileData);
-    }
-
-    const { data: roleData } = await withTransientRetry(() => supabase.from("user_roles").select("role").eq("user_id", activeUser.id));
-    const mapped = roleData?.map((item: { role: string }) => mapRole(item.role)).filter(Boolean) as UserRole[] | undefined;
-    setRoles(mapped?.length ? mapped : ["requester"]);
   };
 
   useEffect(() => {
@@ -122,72 +156,85 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  const value = useMemo<AuthContextType>(() => ({
-    user,
-    session,
-    profile,
-    loading,
-    needsMfa,
-    hasTotpFactor,
-    mfaVerified,
-    roles,
-    signIn: async (email, password) => {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      await refreshMfaState();
-    },
-    signUp: async (email, password, displayName, department) => {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: window.location.origin,
-          data: { display_name: displayName, department },
-        },
-      });
-      if (error) throw error;
-      if (data.user) {
-        await supabase.from("profiles").insert({
-          user_id: data.user.id,
-          display_name: displayName,
-          department,
+  const value = useMemo<AuthContextType>(
+    () => ({
+      user,
+      session,
+      profile,
+      loading,
+      needsMfa,
+      hasTotpFactor,
+      mfaVerified,
+      roles,
+      signIn: async (email, password) => {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        await refreshMfaState();
+      },
+      signUp: async (email, password, displayName, department) => {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: { display_name: displayName, department },
+          },
         });
-      }
-    },
-    signInWithGoogle: async () => {
-      const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
-      if (result.error) throw result.error;
-      if (!result.redirected) await refreshMfaState();
-    },
-    verifyMfa: async (code) => {
-      const factors = await supabase.auth.mfa.listFactors();
-      const factor = factors.data?.totp?.find((item) => item.status === "verified");
-      if (!factor) throw new Error("No verified authenticator app is enrolled.");
-      const challenge = await supabase.auth.mfa.challenge({ factorId: factor.id });
-      if (challenge.error) throw challenge.error;
-      const verify = await supabase.auth.mfa.verify({ factorId: factor.id, challengeId: challenge.data.id, code });
-      if (verify.error) throw verify.error;
-      await refreshMfaState();
-    },
-    enrollTotp: async () => {
-      const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
-      if (error) throw error;
-      return { factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret };
-    },
-    verifyEnrollment: async (factorId, code) => {
-      const challenge = await supabase.auth.mfa.challenge({ factorId });
-      if (challenge.error) throw challenge.error;
-      const verify = await supabase.auth.mfa.verify({ factorId, challengeId: challenge.data.id, code });
-      if (verify.error) throw verify.error;
-      await refreshMfaState();
-    },
-    signOut: async () => {
-      await supabase.auth.signOut();
-      setNeedsMfa(false);
-      setMfaVerified(false);
-      setHasTotpFactor(false);
-    },
-  }), [hasTotpFactor, loading, mfaVerified, needsMfa, profile, roles, session, user]);
+        if (error) throw error;
+        if (data.user) {
+          await supabase.from("profiles").insert({
+            user_id: data.user.id,
+            display_name: displayName,
+            department,
+          });
+        }
+      },
+      signInWithGoogle: async () => {
+        const result = await lovable.auth.signInWithOAuth("google", {
+          redirect_uri: window.location.origin,
+        });
+        if (result.error) throw result.error;
+        if (!result.redirected) await refreshMfaState();
+      },
+      verifyMfa: async (code) => {
+        const factors = await supabase.auth.mfa.listFactors();
+        const factor = factors.data?.totp?.find((item) => item.status === "verified");
+        if (!factor) throw new Error("No verified authenticator app is enrolled.");
+        const challenge = await supabase.auth.mfa.challenge({ factorId: factor.id });
+        if (challenge.error) throw challenge.error;
+        const verify = await supabase.auth.mfa.verify({
+          factorId: factor.id,
+          challengeId: challenge.data.id,
+          code,
+        });
+        if (verify.error) throw verify.error;
+        await refreshMfaState();
+      },
+      enrollTotp: async () => {
+        const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+        if (error) throw error;
+        return { factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret };
+      },
+      verifyEnrollment: async (factorId, code) => {
+        const challenge = await supabase.auth.mfa.challenge({ factorId });
+        if (challenge.error) throw challenge.error;
+        const verify = await supabase.auth.mfa.verify({
+          factorId,
+          challengeId: challenge.data.id,
+          code,
+        });
+        if (verify.error) throw verify.error;
+        await refreshMfaState();
+      },
+      signOut: async () => {
+        await supabase.auth.signOut();
+        setNeedsMfa(false);
+        setMfaVerified(false);
+        setHasTotpFactor(false);
+      },
+    }),
+    [hasTotpFactor, loading, mfaVerified, needsMfa, profile, roles, session, user],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
