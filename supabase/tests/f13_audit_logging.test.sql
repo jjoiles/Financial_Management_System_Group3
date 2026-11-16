@@ -3,6 +3,43 @@ BEGIN;
 SELECT plan(14);
 
 -- Test users and requests.
+-- Create auth records first because user_roles references auth.users(id).
+INSERT INTO auth.users (
+  id,
+  aud,
+  role,
+  email,
+  encrypted_password,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  created_at,
+  updated_at
+)
+VALUES
+  (
+    '11111111-1111-4111-8111-111111111111',
+    'authenticated',
+    'authenticated',
+    'f13-requester@howard.edu',
+    '',
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"display_name":"F13 Requester"}'::jsonb,
+    now(),
+    now()
+  ),
+  (
+    '22222222-2222-4222-8222-222222222222',
+    'authenticated',
+    'authenticated',
+    'f13-reviewer@howard.edu',
+    '',
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"display_name":"F13 Reviewer"}'::jsonb,
+    now(),
+    now()
+  )
+ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO public.user_roles (user_id, role)
 VALUES
   ('11111111-1111-4111-8111-111111111111', 'requester'),
@@ -31,7 +68,7 @@ VALUES (
   'FR-F13-REQUESTER',
   '11111111-1111-4111-8111-111111111111',
   'Audit test requester request',
-  'requester@test.local',
+  'requester@howard.edu',
   'Computer Science',
   'department',
   500,
@@ -70,7 +107,7 @@ VALUES (
   'FR-F13-REVIEWER',
   '22222222-2222-4222-8222-222222222222',
   'Audit test reviewer request',
-  'reviewer@test.local',
+  'reviewer@howard.edu',
   'Finance',
   'department',
   1200,
