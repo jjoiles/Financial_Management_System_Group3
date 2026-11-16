@@ -102,3 +102,27 @@ Do not skip or weaken a test simply to make the workflow pass.
 6. Review the GitHub Actions results and resolve any failures before merging.
 
 This process helps the team detect regressions and validate changes consistently.
+
+## 9. Additional automated test coverage
+
+The project includes focused unit and integration tests for request routing and submission.
+
+### Unit tests: Request routing
+
+File: `src/lib/routing/engine.test.ts`
+
+Eight unit tests cover department funding routing, approval thresholds, research compliance, CFO approval, priority escalation, approaching deadlines, approval-stage selection, and stored routing decisions.
+
+Run them with: `npx vitest run src/lib/routing/engine.test.ts`
+
+### Integration tests: Request submission
+
+File: `src/services/__tests__/request-submission.test.ts`
+
+The integration test verifies research request validation, routing, database payload creation, and workflow initialization together.
+
+Supabase and workflow services are mocked. No production database or external workflow connection is required.
+
+Run them with: `npx vitest run src/services/__tests__/request-submission.test.ts`
+
+Run the complete suite with: `npm test`
