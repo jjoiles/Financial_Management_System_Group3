@@ -7,7 +7,13 @@ export type ExportableRequest = Pick<
 >;
 
 const HEADERS = [
-  "Request ID", "Requester", "Department", "Funding Type", "Amount", "Status", "Updated At",
+  "Request ID",
+  "Requester",
+  "Department",
+  "Funding Type",
+  "Amount",
+  "Status",
+  "Updated At",
 ] as const;
 
 /**
@@ -19,28 +25,57 @@ export function escapeCsvCell(value: string | number): string {
   if (typeof value === "number" && !Number.isFinite(value)) {
     throw new RangeError("CSV numeric values must be finite");
   }
+
   if (typeof value !== "string" && typeof value !== "number") {
     throw new TypeError("CSV cells must be strings or finite numbers");
   }
+
   const text = String(value);
-  const safe = typeof value === "string" && /^[\s\uFEFF\u200B\u0000-\u001F]*[=+\-@]/u.test(text)
-    ? `'${text}`
-    : text;
+
+  const firstNonIgnorable = [...text].find((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+
+    return !(
+      /\s/u.test(character) ||
+      codePoint === 0xfeff ||
+      codePoint === 0x200b ||
+      (codePoint >= 0x00 && codePoint <= 0x1f)
+    );
+  });
+
+  const isFormulaLike =
+    typeof value === "string" &&
+    firstNonIgnorable !== undefined &&
+    ["=", "+", "-", "@"].includes(firstNonIgnorable);
+
+  const safe = isFormulaLike ? `'${text}` : text;
+
   return `"${safe.replace(/"/g, '""')}"`;
 }
 
 /** Pure serializer; does not grant authorization to export the provided records. */
 export function buildFinancialReportCsv(requests: readonly ExportableRequest[]): string {
-  if (!Array.isArray(requests)) throw new TypeError("Requests must be an array");
+  if (!Array.isArray(requests)) {
+    throw new TypeError("Requests must be an array");
+  }
+
   const rows = requests.map((request, index) => {
     if (!request || typeof request !== "object") {
       throw new TypeError(`Invalid request at index ${index}`);
     }
+
     const fields = [
-      request.id, request.requester, request.department, request.fundingType,
-      request.amount, request.status, request.updatedAt,
+      request.id,
+      request.requester,
+      request.department,
+      request.fundingType,
+      request.amount,
+      request.status,
+      request.updatedAt,
     ];
+
     return fields.map(escapeCsvCell).join(",");
   });
+
   return [HEADERS.map(escapeCsvCell).join(","), ...rows].join("\r\n");
 }

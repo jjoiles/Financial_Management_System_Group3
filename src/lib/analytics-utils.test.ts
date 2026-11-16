@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  calculateAnalyticsSummary,
-  getReportingWindowData,
-} from "./analytics-utils";
+import { calculateAnalyticsSummary, getReportingWindowData } from "./analytics-utils";
 
 describe("Lab 3 analytics architecture refactor", () => {
   it("calculates the original dashboard KPIs", () => {

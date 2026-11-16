@@ -176,7 +176,11 @@ export function getReviewerForFunding(fundingSource: string): ReviewerAssignment
  * Throws if `attachmentCount` is negative or non-finite.
  */
 export function buildRequestMetadata(attachmentCount: number): BasicRequestMetadata {
-  if (typeof attachmentCount !== "number" || !Number.isFinite(attachmentCount) || attachmentCount < 0) {
+  if (
+    typeof attachmentCount !== "number" ||
+    !Number.isFinite(attachmentCount) ||
+    attachmentCount < 0
+  ) {
     throw new RangeError("attachmentCount must be a non-negative finite number");
   }
   return Object.freeze({
@@ -188,10 +192,11 @@ export function buildRequestMetadata(attachmentCount: number): BasicRequestMetad
 
 /** Sanitizes an uploaded filename so path traversal and control characters are removed. */
 export function sanitizeFileName(rawName: string | undefined | null): string {
-  const base = String(rawName ?? "")
-    .split(/[\\/]/)
-    .pop()
-    ?.trim() ?? "";
+  const base =
+    String(rawName ?? "")
+      .split(/[\\/]/)
+      .pop()
+      ?.trim() ?? "";
   const cleaned = base.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_{2,}/g, "_");
   if (!cleaned || cleaned === "." || cleaned === "..") {
     return "attachment.bin";
@@ -227,21 +232,31 @@ export function extractFileMetadata(
   file: FileLike | null | undefined,
   fallbackNow: Date = new Date(),
 ): FileAttachmentMetadata {
-  const rawName = typeof file?.name === "string" && file.name.trim().length > 0 ? file.name.trim() : "unnamed-attachment";
+  const rawName =
+    typeof file?.name === "string" && file.name.trim().length > 0
+      ? file.name.trim()
+      : "unnamed-attachment";
   const safeFileName = sanitizeFileName(rawName);
   const dotIndex = safeFileName.lastIndexOf(".");
-  const extension = dotIndex > 0 && dotIndex < safeFileName.length - 1
-    ? safeFileName.slice(dotIndex + 1).toLowerCase().slice(0, 32)
-    : "";
+  const extension =
+    dotIndex > 0 && dotIndex < safeFileName.length - 1
+      ? safeFileName
+          .slice(dotIndex + 1)
+          .toLowerCase()
+          .slice(0, 32)
+      : "";
 
   const rawType = typeof file?.type === "string" ? file.type.trim().toLowerCase() : "";
   const contentType = rawType || MIME_BY_EXTENSION[extension] || "application/octet-stream";
 
-  const rawSize = typeof file?.size === "number" && Number.isFinite(file.size) ? Math.floor(file.size) : 0;
+  const rawSize =
+    typeof file?.size === "number" && Number.isFinite(file.size) ? Math.floor(file.size) : 0;
   const sizeBytes = Math.max(0, rawSize);
 
   const lastModMs =
-    typeof file?.lastModified === "number" && Number.isFinite(file.lastModified) && file.lastModified > 0
+    typeof file?.lastModified === "number" &&
+    Number.isFinite(file.lastModified) &&
+    file.lastModified > 0
       ? file.lastModified
       : fallbackNow.getTime();
 
@@ -301,7 +316,8 @@ export function deriveFiscalPeriod(date: Date = new Date()): {
   // 0 for July, 1 for August, ... 11 for June.
   const monthsIntoFiscalYear =
     (utcMonth - FISCAL_YEAR_START_UTC_MONTH + MONTHS_PER_YEAR) % MONTHS_PER_YEAR;
-  const fiscalQuarter = FISCAL_QUARTERS[Math.floor(monthsIntoFiscalYear / MONTHS_PER_FISCAL_QUARTER)];
+  const fiscalQuarter =
+    FISCAL_QUARTERS[Math.floor(monthsIntoFiscalYear / MONTHS_PER_FISCAL_QUARTER)];
 
   return {
     fiscalYear: `FY${fiscalYear}`,
@@ -348,8 +364,7 @@ export function generateDerivedMetadata(input: GenerateDerivedInput): DerivedReq
     new Set(attachments.map((a) => a.contentType).filter(Boolean)),
   );
 
-  const isExpedited =
-    input.routing?.flags.includes("expedited") ?? input.priority === "high";
+  const isExpedited = input.routing?.flags.includes("expedited") ?? input.priority === "high";
 
   return {
     fiscalYear,
@@ -430,8 +445,7 @@ export function generateRequestMetadata(params: GenerateMetadataParams): Request
 // ---------------------------------------------------------------------------
 
 export type MetadataValidationResult =
-  | { ok: true; data: RequestMetadata }
-  | { ok: false; errors: string[] };
+  { ok: true; data: RequestMetadata } | { ok: false; errors: string[] };
 
 /**
  * F4.3.1: Validates generated metadata against `requestMetadataSchema` before saving.
@@ -598,7 +612,9 @@ export function verifyMetadataAssociation(
   }
 
   if (metadata.userId !== record.userId) {
-    mismatches.push(`userId mismatch: metadata has "${String(metadata.userId)}", record has "${record.userId}"`);
+    mismatches.push(
+      `userId mismatch: metadata has "${String(metadata.userId)}", record has "${record.userId}"`,
+    );
   }
   if (metadata.requestNumber !== record.requestNumber) {
     mismatches.push(

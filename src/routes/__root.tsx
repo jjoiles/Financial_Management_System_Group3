@@ -1,4 +1,11 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts, useLocation } from "@tanstack/react-router";
+import {
+  Outlet,
+  Link,
+  createRootRoute,
+  HeadContent,
+  Scripts,
+  useLocation,
+} from "@tanstack/react-router";
 import { useEffect } from "react";
 import appCss from "../styles.css?url";
 import AppSidebar from "@/components/AppSidebar";
@@ -10,7 +17,9 @@ function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-7xl font-bold text-foreground font-[family-name:var(--font-display)]">404</h1>
+        <h1 className="text-7xl font-bold text-foreground font-[family-name:var(--font-display)]">
+          404
+        </h1>
         <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           The page you're looking for doesn't exist.
@@ -34,11 +43,23 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "FinReq — University Financial Request Management" },
-      { name: "description", content: "Streamline financial request submission, routing, and tracking across university departments." },
+      {
+        name: "description",
+        content:
+          "Streamline financial request submission, routing, and tracking across university departments.",
+      },
       { property: "og:title", content: "FinReq — University Financial Request Management" },
       { name: "twitter:title", content: "FinReq — University Financial Request Management" },
-      { property: "og:description", content: "Streamline financial request submission, routing, and tracking across university departments." },
-      { name: "twitter:description", content: "Streamline financial request submission, routing, and tracking across university departments." },
+      {
+        property: "og:description",
+        content:
+          "Streamline financial request submission, routing, and tracking across university departments.",
+      },
+      {
+        name: "twitter:description",
+        content:
+          "Streamline financial request submission, routing, and tracking across university departments.",
+      },
       { name: "twitter:card", content: "summary" },
       { property: "og:type", content: "website" },
     ],
@@ -85,11 +106,19 @@ function AppFrame() {
   if (isLoginRoute) return <Outlet />;
 
   if (auth.loading) {
-    return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Loading secure workspace…</div>;
+    return (
+      <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
+        Loading secure workspace…
+      </div>
+    );
   }
 
   if (!auth.user || auth.needsMfa) {
-    return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Opening secure sign in…</div>;
+    return (
+      <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
+        Opening secure sign in…
+      </div>
+    );
   }
 
   return (

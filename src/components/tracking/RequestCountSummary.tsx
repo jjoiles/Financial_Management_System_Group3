@@ -29,7 +29,9 @@ export default function RequestCountSummary({
       {prototypeCount > 0 && (
         <>
           {" · "}
-          <span className="font-medium text-warning">{prototypeCount} saved locally on this device only</span>
+          <span className="font-medium text-warning">
+            {prototypeCount} saved locally on this device only
+          </span>
         </>
       )}
     </p>

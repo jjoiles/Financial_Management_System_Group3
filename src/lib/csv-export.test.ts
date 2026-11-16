@@ -1,10 +1,5 @@
-
 import { describe, expect, it } from "vitest";
-import {
-  buildFinancialReportCsv,
-  escapeCsvCell,
-  type ExportableRequest,
-} from "./csv-export";
+import { buildFinancialReportCsv, escapeCsvCell, type ExportableRequest } from "./csv-export";
 
 const request: ExportableRequest = {
   id: "FR-2026-0001",
@@ -45,9 +40,7 @@ describe("F23 CSV trust boundary", () => {
   });
 
   it("rejects invalid runtime cell types", () => {
-    expect(() =>
-      escapeCsvCell(null as unknown as string),
-    ).toThrow(TypeError);
+    expect(() => escapeCsvCell(null as unknown as string)).toThrow(TypeError);
   });
 
   it("preserves FinReq's seven-column report and CRLF row endings", () => {
@@ -69,19 +62,15 @@ describe("F23 CSV trust boundary", () => {
       ...request,
       secret: "private",
     };
-    const result = buildFinancialReportCsv([
-      requestWithExtraField,
-    ]);
+    const result = buildFinancialReportCsv([requestWithExtraField]);
 
     expect(result).not.toContain("private");
   });
 
   it("neutralizes malicious requester names within full reports", () => {
-    const result = buildFinancialReportCsv([
-      { ...request, requester: "=HYPERLINK(1)" },
-    ]);
+    const result = buildFinancialReportCsv([{ ...request, requester: "=HYPERLINK(1)" }]);
 
-    expect(result).toContain("\"'=HYPERLINK(1)\"");
+    expect(result).toContain('"\'=HYPERLINK(1)"');
   });
 
   it("returns headers for empty arrays", () => {
@@ -91,22 +80,14 @@ describe("F23 CSV trust boundary", () => {
   });
 
   it("rejects invalid requests and malformed amounts", () => {
-    expect(() =>
-      buildFinancialReportCsv(
-        null as unknown as ExportableRequest[],
-      ),
-    ).toThrow(TypeError);
+    expect(() => buildFinancialReportCsv(null as unknown as ExportableRequest[])).toThrow(
+      TypeError,
+    );
 
-    expect(() =>
-      buildFinancialReportCsv([
-        null as unknown as ExportableRequest,
-      ]),
-    ).toThrow(TypeError);
+    expect(() => buildFinancialReportCsv([null as unknown as ExportableRequest])).toThrow(
+      TypeError,
+    );
 
-    expect(() =>
-      buildFinancialReportCsv([
-        { ...request, amount: Infinity },
-      ]),
-    ).toThrow(RangeError);
+    expect(() => buildFinancialReportCsv([{ ...request, amount: Infinity }])).toThrow(RangeError);
   });
 });

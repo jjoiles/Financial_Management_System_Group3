@@ -27,9 +27,7 @@ export type ChartDataPoint = {
  * Calculate financial dashboard metrics independently
  * of React components and rendering logic.
  */
-export function calculateAnalyticsSummary(
-  requests: readonly AnalyticsRequest[],
-): AnalyticsSummary {
+export function calculateAnalyticsSummary(requests: readonly AnalyticsRequest[]): AnalyticsSummary {
   const pending = requests.filter(
     (r) => r.status === "Submitted" || r.status === "Under Review",
   ).length;
@@ -39,14 +37,10 @@ export function calculateAnalyticsSummary(
   ).length;
 
   const avgAmount = requests.length
-    ? Math.round(
-        requests.reduce((sum, r) => sum + r.amount, 0) / requests.length,
-      )
+    ? Math.round(requests.reduce((sum, r) => sum + r.amount, 0) / requests.length)
     : 0;
 
-  const overdue = requests.filter(
-    (r) => r.status === "Under Review",
-  ).length;
+  const overdue = requests.filter((r) => r.status === "Under Review").length;
 
   return {
     pending,
@@ -54,9 +48,7 @@ export function calculateAnalyticsSummary(
     avgAmount,
     overdue,
     totalRequests: requests.length,
-    approvalRate: requests.length
-      ? Math.round((completed / requests.length) * 100)
-      : 0,
+    approvalRate: requests.length ? Math.round((completed / requests.length) * 100) : 0,
   };
 }
 
@@ -64,9 +56,7 @@ export function calculateAnalyticsSummary(
  * Return the original dashboard chart data for
  * the selected reporting window.
  */
-export function getReportingWindowData(
-  windowKey: ReportingWindow,
-): ChartDataPoint[] {
+export function getReportingWindowData(windowKey: ReportingWindow): ChartDataPoint[] {
   if (windowKey === "Week") {
     return [
       { month: "W1", submitted: 6, approved: 4, rejected: 1 },
