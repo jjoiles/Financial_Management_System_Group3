@@ -1,0 +1,111 @@
+# F13: Audit Event Structure
+
+## 1. Purpose
+
+The audit log provides a chronological, traceable history of actions
+performed on financial requests. It supports accountability,
+transparency, and administrative review.
+
+The existing `public.workflow_events` table is the central audit
+event store. This feature extends and standardizes its use rather
+than creating a second event table.
+
+## 2. Standard Event Structure
+
+Every audit event uses the following fields:
+
+| Field | Type | Purpose |
+|---|---|---|
+| id | UUID | Unique event identifier |
+| request_id | UUID | Financial request associated with the event |
+| actor_user_id | UUID, nullable | User responsible for the action |
+| event_type | TEXT | Machine-readable event category |
+| message | TEXT | Human-readable event description |
+| metadata | JSONB | Structured event details |
+| created_at | TIMESTAMPTZ | Event creation timestamp |
+
+System-generated events may have a null actor when no authenticated
+user initiated the operation. Metadata should identify the source
+of the event when available.
+
+## 3. Required Event Categories
+
+| Event type | When it is recorded |
+|---|---|
+| request_created | A financial request is created |
+| request_updated | Tracked request information is modified |
+| status_changed | A request changes status |
+| routing_changed | A request is assigned to a different reviewer or queue |
+| attachment_added | An attachment is added to a request |
+| attachment_removed | An attachment is removed from a request |
+| approval_approved | A reviewer approves a request or approval stage |
+| approval_rejected | A reviewer rejects a request or approval stage |
+
+## 4. Event Metadata
+
+Metadata provides additional structured context without changing
+the standard event columns.
+
+Examples include:
+
+- Request number and current status.
+- Previous and updated values for tracked fields.
+- Previous and new routing destinations.
+- Approval stage, reviewer decision, and decision comment.
+- Attachment identifier, file name, size, and content type.
+- Event source, such as a database trigger or approval procedure.
+
+Sensitive credentials, access tokens, passwords, and file contents
+must never be copied into audit metadata.
+
+Long descriptions should be represented as changed indicators
+rather than copying their entire contents into the audit log.
+
+## 5. Actor and Timestamp Requirements
+
+- Capture the authenticated user's UUID whenever available.
+- Use `auth.uid()` for database operations initiated by an authenticated user.
+- Use a null actor only for system operations without an authenticated user.
+- Record timestamps using `TIMESTAMPTZ`.
+- Use the database-generated timestamp as the authoritative event time.
+- Preserve event history rather than rewriting earlier timestamps.
+
+## 6. Audit Event Recording Rules
+
+1. Request creation must generate a creation event.
+2. Changes to tracked request fields must generate update events.
+3. Status and routing changes must be identifiable as separate events.
+4. Attachment creation and removal must be recorded.
+5. Approval and rejection decisions must identify the decision and stage.
+6. Events must reference the financial request they describe.
+7. Events must be retained as historical records.
+
+## 7. Activity History
+
+Events should be displayed chronologically for the associated
+financial request.
+
+The activity history should identify:
+
+- What happened.
+- Who performed the action, when available.
+- When the action occurred.
+- The event category.
+
+Only users authorized to view the associated financial request
+may view its audit history.
+
+## 8. Implementation References
+
+The existing implementation includes:
+
+- `supabase/migrations/20261015130000_f5_automated_data_logging.sql`
+- `supabase/migrations/20261113233242_f16_approval_decisions.sql`
+- `src/lib/activity-data.ts`
+- `src/components/RequestDetailDialog.tsx`
+- `src/integrations/supabase/types.ts`
+
+This specification defines the expected event structure.
+Permission enforcement, remaining event coverage, interface
+improvements, and automated verification are addressed in
+F13 subissues #146 through #149.
