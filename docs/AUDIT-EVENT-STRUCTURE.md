@@ -109,3 +109,18 @@ This specification defines the expected event structure.
 Permission enforcement, remaining event coverage, interface
 improvements, and automated verification are addressed in
 F13 subissues #146 through #149.
+
+## 9. Administrative Change Tracking
+
+The automated request trigger also tracks administrative changes to:
+
+- `user_id`: reassignment of request ownership.
+- `request_number`: correction of a request identifier.
+
+For request creation and updates, audit metadata includes an
+`actorRoles` snapshot containing the authenticated actor's roles
+at the time the event was recorded.
+
+The existing `actor_user_id` remains the authoritative user identifier.
+Generated metadata and workflow bookkeeping are excluded from
+ordinary field-change logging to avoid noisy or sensitive events.
