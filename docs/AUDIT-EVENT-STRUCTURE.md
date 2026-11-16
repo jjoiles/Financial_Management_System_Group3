@@ -124,3 +124,17 @@ at the time the event was recorded.
 The existing `actor_user_id` remains the authoritative user identifier.
 Generated metadata and workflow bookkeeping are excluded from
 ordinary field-change logging to avoid noisy or sensitive events.
+
+## 10. Audit Access and Immutability
+
+The `workflow_events` table uses row-level security.
+
+- Authenticated requesters can read activity associated with their own requests.
+- Authorized administrators, reviewers, and leadership can read permitted request history.
+- Anonymous users cannot read audit events.
+- Authenticated application clients cannot directly insert, update, delete, or truncate audit records.
+- Trusted database triggers and SECURITY DEFINER procedures remain responsible for generating events.
+- Historical audit records cannot be changed through ordinary application client permissions.
+
+The database owner and trusted elevated administrative operations remain
+responsible for exceptional database maintenance.
