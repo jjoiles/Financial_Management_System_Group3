@@ -321,7 +321,12 @@ describe("F4.4.1: Normal record metadata generation", () => {
     const now = new Date("2026-10-16T15:30:00.000Z");
     const requestNumber = createRequestNumber(now);
     const files = [
-      { name: "vendor_quote.pdf", size: 120_000, type: "application/pdf", lastModified: now.getTime() },
+      {
+        name: "vendor_quote.pdf",
+        size: 120_000,
+        type: "application/pdf",
+        lastModified: now.getTime(),
+      },
       { name: "budget.xlsx", size: 35_400, type: "", lastModified: now.getTime() },
     ];
 
@@ -380,7 +385,7 @@ describe("F4.4.2: Missing or invalid source information and safe fallback", () =
     expect(attachments[0].sizeBytes).toBe(0);
     expect(attachments[0].contentType).toBe("application/octet-stream");
     expect(attachments[1].safeFileName).toBe("attachment.bin");
-    expect( sanitizeFileName("..\\..\\secret.pdf")).toBe("secret.pdf");
+    expect(sanitizeFileName("..\\..\\secret.pdf")).toBe("secret.pdf");
   });
 
   it("rejects tampered or incomplete metadata in validateRequestMetadata (F4.3.1)", () => {

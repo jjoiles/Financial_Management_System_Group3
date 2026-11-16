@@ -43,7 +43,9 @@ export default function StatusFilterChips({
             {status}
             <span
               className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                isActive ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+                isActive
+                  ? "bg-primary-foreground/20 text-primary-foreground"
+                  : "bg-muted text-muted-foreground"
               }`}
             >
               {counts[status]}

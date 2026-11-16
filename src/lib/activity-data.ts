@@ -51,9 +51,7 @@ export function useRequestActivity(requestId: string | null, enabled = true) {
         const rows = data ?? [];
         const actorIds = [
           ...new Set(
-            rows
-              .map((row) => row.actor_user_id)
-              .filter((id): id is string => id !== null),
+            rows.map((row) => row.actor_user_id).filter((id): id is string => id !== null),
           ),
         ];
 
@@ -89,8 +87,7 @@ export function useRequestActivity(requestId: string | null, enabled = true) {
             createdAt: row.created_at,
             actorUserId: row.actor_user_id,
             actorName: row.actor_user_id
-              ? actorNames.get(row.actor_user_id) ??
-                `User (${row.actor_user_id.slice(0, 8)})`
+              ? (actorNames.get(row.actor_user_id) ?? `User (${row.actor_user_id.slice(0, 8)})`)
               : "System",
             metadata: (row.metadata ?? {}) as Record<string, unknown>,
           })),

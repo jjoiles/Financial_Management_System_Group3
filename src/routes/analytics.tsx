@@ -13,14 +13,7 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import {
-  ArrowUpRight,
-  Download,
-  Filter,
-  FolderKanban,
-  Gauge,
-  TrendingUp,
-} from "lucide-react";
+import { ArrowUpRight, Download, Filter, FolderKanban, Gauge, TrendingUp } from "lucide-react";
 import { mockRequests, fundingDistribution, turnaroundData } from "@/lib/mock-data";
 import { useFinancialRequests } from "@/lib/requests-data";
 import { buildFinancialReportCsv } from "@/lib/csv-export";
@@ -59,15 +52,9 @@ function AnalyticsPage() {
   const [windowKey, setWindowKey] = useState<WindowKey>("Month");
 
   // Lab 3: Keep business calculations separate from dashboard rendering.
-  const summary = useMemo(
-    () => calculateAnalyticsSummary(sourceRequests),
-    [sourceRequests],
-  );
+  const summary = useMemo(() => calculateAnalyticsSummary(sourceRequests), [sourceRequests]);
 
-  const timeWindowData = useMemo(
-    () => getReportingWindowData(windowKey),
-    [windowKey],
-  );
+  const timeWindowData = useMemo(() => getReportingWindowData(windowKey), [windowKey]);
 
   const kpis = [
     { label: "Avg. Turnaround", value: "4.8 days" },
@@ -182,7 +169,11 @@ function AnalyticsPage() {
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={timeWindowData}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
+              <XAxis
+                dataKey="month"
+                tick={{ fontSize: 11 }}
+                stroke="var(--color-muted-foreground)"
+              />
               <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
               <Tooltip
                 contentStyle={{

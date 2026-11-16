@@ -35,8 +35,7 @@ export type SubmissionCommand = {
 };
 
 export type SubmissionOutcome =
-  | { ok: true; result: SubmissionResult }
-  | { ok: false; errors: FormErrors; message: string };
+  { ok: true; result: SubmissionResult } | { ok: false; errors: FormErrors; message: string };
 
 export type SubmissionService = (command: SubmissionCommand) => Promise<SubmissionOutcome>;
 

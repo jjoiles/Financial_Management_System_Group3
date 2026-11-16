@@ -442,16 +442,12 @@ function ActivityLog({ requestId }: { requestId: string }) {
       </p>
 
       <div className="rounded-lg border border-border bg-background p-4">
-        {loading && (
-          <p className="text-xs text-muted-foreground">Loading activity…</p>
-        )}
+        {loading && <p className="text-xs text-muted-foreground">Loading activity…</p>}
 
         {error && <p className="text-xs text-destructive">{error}</p>}
 
         {!loading && !error && events.length === 0 && (
-          <p className="text-xs text-muted-foreground">
-            No activity recorded yet.
-          </p>
+          <p className="text-xs text-muted-foreground">No activity recorded yet.</p>
         )}
 
         <ol className="space-y-4">
@@ -461,9 +457,7 @@ function ActivityLog({ requestId }: { requestId: string }) {
 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-medium text-foreground">
-                    {event.message}
-                  </p>
+                  <p className="font-medium text-foreground">{event.message}</p>
 
                   <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium capitalize text-primary">
                     {event.eventType.replace(/_/g, " ")}
@@ -471,8 +465,7 @@ function ActivityLog({ requestId }: { requestId: string }) {
                 </div>
 
                 <p className="mt-1 text-xs text-muted-foreground">
-                  By {event.actorName} ·{" "}
-                  {new Date(event.createdAt).toLocaleString()}
+                  By {event.actorName} · {new Date(event.createdAt).toLocaleString()}
                 </p>
               </div>
             </li>

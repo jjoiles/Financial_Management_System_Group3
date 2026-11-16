@@ -10,7 +10,9 @@ const statusClasses: Record<RequestStatus, string> = {
 
 export default function StatusBadge({ status }: { status: RequestStatus }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusClasses[status]}`}>
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusClasses[status]}`}
+    >
       {status}
     </span>
   );

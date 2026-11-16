@@ -22,11 +22,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [role, roles]);
 
-  return (
-    <AppContext.Provider value={{ role, setRole }}>
-      {children}
-    </AppContext.Provider>
-  );
+  return <AppContext.Provider value={{ role, setRole }}>{children}</AppContext.Provider>;
 }
 
 export function useAppContext() {
