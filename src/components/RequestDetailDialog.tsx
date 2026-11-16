@@ -436,38 +436,50 @@ function ActivityLog({ requestId }: { requestId: string }) {
   const { events, loading, error } = useRequestActivity(requestId);
 
   return (
-    <div>
+    <section aria-label="Request activity history">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Activity
+        Activity History
       </p>
 
       <div className="rounded-lg border border-border bg-background p-4">
-        {loading && <p className="text-xs text-muted-foreground">Loading activity…</p>}
+        {loading && (
+          <p className="text-xs text-muted-foreground">Loading activity…</p>
+        )}
 
         {error && <p className="text-xs text-destructive">{error}</p>}
 
         {!loading && !error && events.length === 0 && (
-          <p className="text-xs text-muted-foreground">No activity recorded yet.</p>
+          <p className="text-xs text-muted-foreground">
+            No activity recorded yet.
+          </p>
         )}
 
-        <ol className="space-y-2">
+        <ol className="space-y-4">
           {events.map((event) => (
             <li key={event.id} className="flex gap-3 text-sm">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+              <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
 
-              <div className="min-w-0">
-                <p className="text-foreground">{event.message}</p>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-foreground">
+                    {event.message}
+                  </p>
 
-                <p className="text-[11px] text-muted-foreground">
-                  {new Date(event.createdAt).toLocaleString()} ·{" "}
-                  {event.eventType.replace(/_/g, " ")}
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium capitalize text-primary">
+                    {event.eventType.replace(/_/g, " ")}
+                  </span>
+                </div>
+
+                <p className="mt-1 text-xs text-muted-foreground">
+                  By {event.actorName} ·{" "}
+                  {new Date(event.createdAt).toLocaleString()}
                 </p>
               </div>
             </li>
           ))}
         </ol>
       </div>
-    </div>
+    </section>
   );
 }
 

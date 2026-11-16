@@ -138,3 +138,20 @@ The `workflow_events` table uses row-level security.
 
 The database owner and trusted elevated administrative operations remain
 responsible for exceptional database maintenance.
+
+## 11. Activity History Display
+
+The request detail activity timeline displays:
+
+- A readable description of each recorded action.
+- The event category.
+- The responsible user's profile display name when available.
+- The event timestamp.
+- A system label for events without an authenticated actor.
+
+Profile names are retrieved through the existing profiles table and
+its row-level security policies. When a profile name is not visible
+to the current user, the timeline uses a shortened user identifier
+rather than exposing additional profile information.
+
+Events remain ordered chronologically.
