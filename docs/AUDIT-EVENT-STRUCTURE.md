@@ -179,3 +179,12 @@ npx supabase test db
 
 The test uses fictional users and requests and rolls back its
 fixtures at the end.
+
+## 13. Authorization Helper
+
+The audit history SELECT policy uses the existing
+`public.f16_can_view_approval_stage(UUID)` SECURITY DEFINER function.
+
+This helper checks request ownership and authorized reviewer,
+leadership, and administrator roles without requiring clients
+to execute restricted legacy authorization functions.
