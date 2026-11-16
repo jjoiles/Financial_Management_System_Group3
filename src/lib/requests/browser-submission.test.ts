@@ -111,31 +111,16 @@ describe("browser submission adapter", () => {
     expect(insert).toHaveBeenCalledWith(record);
   });
 
-  it("uses the existing storage keys, limits, and prototype attachment paths", () => {
-    storage.set("prototype-financial-requests", JSON.stringify(Array(50).fill({ old: true })));
-    const saved = ports.savePrototypeRequest(
-      payload,
-      payload.request_number,
-      "2026-10-25T12:00:00Z",
-    );
-    const requests = JSON.parse(storage.get("prototype-financial-requests")!);
-    expect(requests).toHaveLength(50);
-    expect(requests[0]).toMatchObject({ ...payload, prototype: true, id: saved.id });
-    storage.set("prototype-request-attachments", JSON.stringify(Array(100).fill({ old: true })));
-    ports.savePrototypeAttachments(saved.id, payload.user_id, [new File(["a"], "quote.pdf")]);
-    const files = JSON.parse(storage.get("prototype-request-attachments")!);
-    expect(files).toHaveLength(100);
-    expect(files[0]).toMatchObject({
-      request_id: saved.id,
-      user_id: payload.user_id,
-      file_path: `prototype://${saved.id}/quote.pdf`,
-      file_size: 1,
+  it("throws a failed insert instead of saving the request to localStorage", async () => {
+    const error = { code: "42501", message: "permission denied" };
+    const single = vi.fn().mockResolvedValue({ data: null, error });
+    external.from.mockReturnValue({
+      insert: () => ({ select: () => ({ single }) }),
     });
-  });
-
-  it("does not write prototype attachment storage for an empty list", () => {
-    ports.savePrototypeAttachments("request", payload.user_id, []);
-    expect(storage.has("prototype-request-attachments")).toBe(false);
+    await expect(ports.insertRequest(payload)).rejects.toBe(error);
+    expect(ports).not.toHaveProperty("savePrototypeRequest");
+    expect(ports).not.toHaveProperty("savePrototypeAttachments");
+    expect(storage.size).toBe(0);
   });
 
   it("gets a fresh session and passes its authorization header to the server function", async () => {

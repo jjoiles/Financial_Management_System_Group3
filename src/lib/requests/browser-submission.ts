@@ -4,7 +4,7 @@ import { initializeWorkflow } from "../workflow/initialize-workflow";
 import { createSubmissionService } from "./submission-service";
 import type { SubmissionPorts } from "./submission-types";
 
-/** Production adapter: all Supabase and browser storage access stays here. */
+/** Production adapter: all Supabase access stays here. */
 const browserPorts: SubmissionPorts = {
   async insertRequest(payload) {
     const { metadata, ...row } = payload;
@@ -31,43 +31,6 @@ const browserPorts: SubmissionPorts = {
   },
   async linkAttachment(record) {
     return supabase.from("request_attachments").insert(record);
-  },
-  savePrototypeRequest(payload, requestNumber, createdAt) {
-    const saved = {
-      ...payload,
-      id: crypto.randomUUID(),
-      request_number: requestNumber,
-      created_at: createdAt,
-      prototype: true,
-    };
-    const existing = JSON.parse(
-      window.localStorage.getItem("prototype-financial-requests") ?? "[]",
-    ) as unknown[];
-    window.localStorage.setItem(
-      "prototype-financial-requests",
-      JSON.stringify([saved, ...existing].slice(0, 50)),
-    );
-    return saved;
-  },
-  savePrototypeAttachments(requestId, userId, files) {
-    if (files.length === 0) return;
-    const records = files.map((file) => ({
-      id: crypto.randomUUID(),
-      request_id: requestId,
-      user_id: userId,
-      file_name: file.name,
-      file_path: `prototype://${requestId}/${file.name}`,
-      file_size: file.size,
-      content_type: file.type,
-      created_at: new Date().toISOString(),
-    }));
-    const existing = JSON.parse(
-      window.localStorage.getItem("prototype-request-attachments") ?? "[]",
-    ) as unknown[];
-    window.localStorage.setItem(
-      "prototype-request-attachments",
-      JSON.stringify([...records, ...existing].slice(0, 100)),
-    );
   },
   async startWorkflow(requestId) {
     const { data } = await supabase.auth.getSession();

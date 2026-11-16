@@ -83,7 +83,6 @@ export function createSubmissionService(ports: SubmissionPorts): SubmissionServi
       const routedTo = routing.primaryLabel;
       const now = ports.now();
       const requestNumber = createRequestNumber(now);
-      const createdAt = now.toISOString();
       const metadata = generateRequestMetadataSafe({
         userId,
         requestNumber,
@@ -137,92 +136,86 @@ export function createSubmissionService(ports: SubmissionPorts): SubmissionServi
             message: "The server rejected one or more fields. Review the highlighted fields.",
           };
         }
-        logger.error("request.insert_failed_prototype_fallback", { requestNumber, error });
-        inserted = ports.savePrototypeRequest(payload.data, requestNumber, createdAt);
-        ports.savePrototypeAttachments(inserted.id, userId, files);
-        const reason = isTransientBackendError(error)
-          ? "The hosted backend was temporarily unavailable."
-          : error instanceof Error
-            ? error.message
-            : "The hosted backend rejected the request.";
-        warning = `Saved in prototype mode. ${reason} Attachments and workflow were simulated.`;
+        // No local fallback: a request that did not reach the database was not submitted.
+        logger.error("request.insert_failed", { requestNumber, error });
+        return {
+          ok: false,
+          errors: {},
+          message: isTransientBackendError(error)
+            ? "The request could not be saved because the backend was temporarily unavailable. Please try again in a moment."
+            : "The request could not be saved. Please try again. If the problem continues, contact the FinReq team.",
+        };
       }
 
-      if (!inserted.prototype) {
-        try {
-          for (const file of files) {
-            const path = `${userId}/${inserted.id}/${ports.now().getTime()}-${sanitizeFileName(file.name)}`;
-            const upload = await ports.uploadAttachment(path, file);
-            if (upload.error) {
-              logger.error("attachment.upload_failed", {
-                requestId: inserted.id,
-                fileName: file.name,
-                error: upload.error,
-              });
-              warning ||=
-                "Your request was saved, but one or more attachments could not be uploaded, so attachment storage was simulated.";
-              continue;
-            }
-            const attachment = await ports.linkAttachment({
-              request_id: inserted.id,
-              user_id: userId,
-              file_name: file.name,
-              file_path: path,
-              file_size: file.size,
-              content_type: file.type,
+      try {
+        for (const file of files) {
+          const path = `${userId}/${inserted.id}/${ports.now().getTime()}-${sanitizeFileName(file.name)}`;
+          const upload = await ports.uploadAttachment(path, file);
+          if (upload.error) {
+            logger.error("attachment.upload_failed", {
+              requestId: inserted.id,
+              fileName: file.name,
+              error: upload.error,
             });
-            if (attachment.error) {
-              logger.error("attachment.link_failed", {
-                requestId: inserted.id,
-                fileName: file.name,
-                error: attachment.error,
-              });
-              warning ||=
-                "Your request was saved, but one or more attachments could not be linked, so attachment tracking was simulated.";
-            }
+            warning ||=
+              "Your request was saved, but one or more attachments could not be uploaded.";
+            continue;
           }
-        } catch (error) {
-          logger.error("attachment.storage_unavailable", {
-            requestId: inserted.id,
-            fileCount: files.length,
-            error,
+          const attachment = await ports.linkAttachment({
+            request_id: inserted.id,
+            user_id: userId,
+            file_name: file.name,
+            file_path: path,
+            file_size: file.size,
+            content_type: file.type,
           });
-          ports.savePrototypeAttachments(inserted.id, userId, files);
-          warning ||=
-            "Your request was saved, but attachment storage is not connected right now, so attachments were simulated.";
+          if (attachment.error) {
+            logger.error("attachment.link_failed", {
+              requestId: inserted.id,
+              fileName: file.name,
+              error: attachment.error,
+            });
+            warning ||=
+              "Your request was saved, but one or more attachments could not be linked to it.";
+          }
         }
+      } catch (error) {
+        logger.error("attachment.storage_unavailable", {
+          requestId: inserted.id,
+          fileCount: files.length,
+          error,
+        });
+        warning ||=
+          "Your request was saved, but attachment storage is not available right now, so attachments were not uploaded.";
       }
 
-      let workflowLabel = "Simulated (prototype mode)";
+      let workflowLabel: string = workflowModeLabel.failed;
       let finalRoutedTo = routedTo;
-      if (!inserted.prototype) {
-        try {
-          const workflow = await ports.startWorkflow(inserted.id);
-          finalRoutedTo = workflow.routedTo || routedTo;
-          workflowLabel = workflowModeLabel[workflow.mode];
-          if (workflow.mode === "failed") {
-            logger.error("workflow.start_failed", {
-              requestId: inserted.id,
-              message: workflow.message,
-            });
-            warning ||= workflow.message;
-          } else {
-            logger.info("workflow.started", {
-              requestId: inserted.id,
-              mode: workflow.mode,
-              alreadyInitialized: workflow.alreadyInitialized,
-            });
-          }
-        } catch (error) {
-          logger.error("workflow.call_failed", { requestId: inserted.id, error });
-          workflowLabel = workflowModeLabel.failed;
-          warning ||=
-            "Your request was saved, but the workflow could not be started. It can be retried without resubmitting.";
+      try {
+        const workflow = await ports.startWorkflow(inserted.id);
+        finalRoutedTo = workflow.routedTo || routedTo;
+        workflowLabel = workflowModeLabel[workflow.mode];
+        if (workflow.mode === "failed") {
+          logger.error("workflow.start_failed", {
+            requestId: inserted.id,
+            message: workflow.message,
+          });
+          warning ||= workflow.message;
+        } else {
+          logger.info("workflow.started", {
+            requestId: inserted.id,
+            mode: workflow.mode,
+            alreadyInitialized: workflow.alreadyInitialized,
+          });
         }
+      } catch (error) {
+        logger.error("workflow.call_failed", { requestId: inserted.id, error });
+        workflowLabel = workflowModeLabel.failed;
+        warning ||=
+          "Your request was saved, but the workflow could not be started. It can be retried without resubmitting.";
       }
       logger.info("request.submitted", {
         requestNumber: inserted.request_number,
-        prototype: !!inserted.prototype,
         attachments: files.length,
         routedTo: finalRoutedTo,
       });

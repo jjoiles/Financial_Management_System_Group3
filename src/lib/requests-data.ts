@@ -10,8 +10,6 @@ import { readRoutingDecision, type RoutingDecision } from "@/lib/routing/engine"
 
 import { readRequestMetadata, type RequestMetadata } from "@/lib/request-utils";
 
-import { readPrototypeRequests as readPrototypeRequestStore } from "@/lib/prototype-store";
-
 type DbRow = {
   id: string;
   request_number: string;
@@ -30,7 +28,6 @@ type DbRow = {
   routed_to: string | null;
   metadata?: Record<string, unknown>;
   request_attachments?: { count: number }[];
-  prototype?: boolean;
 };
 
 type ActiveStageRow = {
@@ -81,7 +78,6 @@ export type EnrichedRequest = FinancialRequest & {
   routedTo: string | null;
   routing: RoutingDecision | null;
   metadata?: RequestMetadata | null;
-  prototype: boolean;
   userId: string | null;
   activeStage: ActiveApprovalStage | null;
 };
@@ -111,12 +107,9 @@ const toEnriched = (
   routedTo: row.routed_to,
   routing: readRoutingDecision(row.metadata),
   metadata: readRequestMetadata(row.metadata),
-  prototype: !!row.prototype,
   userId: row.user_id ?? null,
   activeStage,
 });
-
-export const readPrototypeRequests = (): DbRow[] => readPrototypeRequestStore<DbRow>();
 
 export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
   const [data, setData] = useState<EnrichedRequest[]>([]);
@@ -211,12 +204,7 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
         }
       };
 
-      // Preserve locally saved prototype requests.
       let combined: EnrichedRequest[] = (rows ?? []).flatMap(safeMap);
-
-      const proto = readPrototypeRequests().flatMap((row) => safeMap({ ...row, prototype: true }));
-
-      combined = [...combined, ...proto];
 
       if (opts.onlyMine) {
         combined = currentUserId

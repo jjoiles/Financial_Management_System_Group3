@@ -32,8 +32,6 @@ function TrackingPage() {
     () =>
       data.filter((r) => {
         if (!auth.user) return false;
-        // Local prototype rows: only show ones saved by this signed-in user.
-        if (r.prototype) return r.userId === auth.user.id;
         return r.userId === auth.user.id || r.email === auth.user.email;
       }),
     [data, auth.user],
@@ -62,7 +60,6 @@ function TrackingPage() {
   }, [myRequests, search, statusFilter]);
 
   const isFiltered = search.trim() !== "" || statusFilter !== "All";
-  const prototypeCount = filteredRequests.filter((r) => r.prototype).length;
 
   const pending = filteredRequests.filter(
     (r) => r.status === "Submitted" || r.status === "Under Review",
@@ -95,7 +92,6 @@ function TrackingPage() {
             <RequestCountSummary
               matching={filteredRequests.length}
               total={myRequests.length}
-              prototypeCount={prototypeCount}
               isFiltered={isFiltered}
             />
           </div>
@@ -204,14 +200,6 @@ function Group({
                       {req.title}
                     </h3>
                     <StatusBadge status={req.status} />
-                    {req.prototype && (
-                      <span
-                        title="Saved locally on this device only — not stored in the backend"
-                        className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning"
-                      >
-                        Prototype · local only
-                      </span>
-                    )}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {req.id} · {formatCurrency(req.amount)} · {req.fundingType} Fund
