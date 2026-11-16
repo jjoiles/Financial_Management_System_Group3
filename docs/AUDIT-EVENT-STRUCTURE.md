@@ -155,3 +155,27 @@ to the current user, the timeline uses a shortened user identifier
 rather than exposing additional profile information.
 
 Events remain ordered chronologically.
+
+## 12. Audit Logging Verification
+
+The database integration tests are located at:
+
+- `supabase/tests/f13_audit_logging.test.sql`
+
+They verify:
+
+- Event actor identification and role snapshots.
+- Database-generated event timestamps.
+- Request creation, status changes, and tracked field changes.
+- Authenticated read access and prohibited client write operations.
+- Requester isolation from other request histories.
+- Reviewer access to permitted request histories.
+
+Run the database tests against the local Supabase stack:
+
+```bash
+npx supabase test db
+```
+
+The test uses fictional users and requests and rolls back its
+fixtures at the end.
