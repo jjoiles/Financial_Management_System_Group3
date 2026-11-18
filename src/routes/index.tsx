@@ -25,6 +25,10 @@ export const Route = createFileRoute("/")({
         name: "description",
         content: "Financial request management overview and recent activity.",
       },
+      { property: "og:title", content: "Overview — FinReq" },
+      { property: "og:description", content: "Financial request management overview and recent activity." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
 });

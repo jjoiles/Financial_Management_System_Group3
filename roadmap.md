@@ -14,3 +14,11 @@ Verification limits: the existing Requester session returns no backend requests;
 - [x] Provide explicit manual-sharing feedback without sending data or simulating delivery.
 - [x] Test CSV escaping, ordering, empty results, access denial, and downloads; verify automatic checks.
 - [x] Document changed files and limitations; commit on the current feature branch without merging.
+
+# Issue #11 — F11
+
+- [x] Add persisted, owner-only status notifications; preserve request authorization and F12/F23.
+- [x] Replace sample bell notifications with private updates and safe request links.
+- [x] Add focused service tests and rollback-only database integration assertions.
+- [x] Verify existing Requester submission/alert/link/read flow, automatic checks, and documentation; commit on the F11 branch.
+- [ ] Execute full database UPDATE/failure-injection integration suite — blocked by sandbox UPDATE/ALTER/SET ROLE privileges; do not elevate.

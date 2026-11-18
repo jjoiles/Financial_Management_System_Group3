@@ -157,6 +157,47 @@ export type Database = {
           },
         ]
       }
+      requester_status_notifications: {
+        Row: {
+          created_at: string
+          id: string
+          new_status: Database["public"]["Enums"]["request_status"]
+          previous_status: Database["public"]["Enums"]["request_status"] | null
+          read_at: string | null
+          recipient_user_id: string
+          request_id: string
+          request_number: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          new_status: Database["public"]["Enums"]["request_status"]
+          previous_status?: Database["public"]["Enums"]["request_status"] | null
+          read_at?: string | null
+          recipient_user_id: string
+          request_id: string
+          request_number: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          new_status?: Database["public"]["Enums"]["request_status"]
+          previous_status?: Database["public"]["Enums"]["request_status"] | null
+          read_at?: string | null
+          recipient_user_id?: string
+          request_id?: string
+          request_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requester_status_notifications_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "financial_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string

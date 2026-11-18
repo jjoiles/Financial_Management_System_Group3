@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFinancialRequests, type EnrichedRequest } from "@/lib/requests-data";
 import { useAuth } from "@/lib/auth-context";
 import StatusBadge from "@/components/StatusBadge";
@@ -15,6 +15,10 @@ import RequestReadNotice from "@/components/RequestReadNotice";
 
 export const Route = createFileRoute("/tracking")({
   component: TrackingPage,
+  validateSearch: (search: Record<string, unknown>): { request?: string } => ({
+    request: typeof search.request === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search.request)
+      ? search.request : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "My Requests — FinReq" },
@@ -33,6 +37,8 @@ function TrackingPage() {
   const [selected, setSelected] = useState<EnrichedRequest | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
+  const { request: linkedRequestId } = Route.useSearch();
+  const openedLink = useRef<string | undefined>(undefined);
 
   const myRequests = useMemo(
     () =>
@@ -57,6 +63,15 @@ function TrackingPage() {
     for (const r of myRequests) counts[r.status] += 1;
     return counts;
   }, [myRequests]);
+
+  useEffect(() => {
+    if (loading || readIssue || !linkedRequestId || openedLink.current === linkedRequestId) return;
+    const linked = myRequests.find(row => row.uuid === linkedRequestId && !row.prototype);
+    if (linked) {
+      setSelected(linked);
+      openedLink.current = linkedRequestId;
+    }
+  }, [loading, readIssue, linkedRequestId, myRequests]);
 
   const filteredRequests = useMemo(
     () => filterRequests(myRequests, { search, status: statusFilter, scope: "tracking" }),
@@ -111,6 +126,9 @@ function TrackingPage() {
       )}
 
       <RequestReadNotice issue={readIssue} />
+      {!loading && !readIssue && linkedRequestId && !myRequests.some(row => row.uuid === linkedRequestId && !row.prototype) && (
+        <p role="alert" className="text-sm text-muted-foreground">This request is unavailable or is not yours to view.</p>
+      )}
 
       {listState === "loading" ? (
         <div className="flex items-center justify-center rounded-2xl border border-border bg-card py-16 text-sm text-muted-foreground">

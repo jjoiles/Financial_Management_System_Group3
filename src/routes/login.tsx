@@ -9,6 +9,10 @@ export const Route = createFileRoute("/login")({
     meta: [
       { title: "Secure Sign In — FinReq" },
       { name: "description", content: "Sign in with two-factor authentication for university financial request management." },
+      { property: "og:title", content: "Secure Sign In — FinReq" },
+      { property: "og:description", content: "Secure access to university financial request management." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
 });
