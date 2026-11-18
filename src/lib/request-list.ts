@@ -64,17 +64,16 @@ export function classifyRequestReadError(error: unknown): RequestReadIssue {
       /permission denied|row.level security|not authorized|access denied|jwt expired/i.test(message)) {
     return { kind: "access", message: "Access restricted. Your current session does not have permission to load these requests. Sign in again or contact your administrator if you believe you should have access." };
   }
-  return { kind: "unavailable", message: "Backend requests could not be loaded. Please refresh to try again. Any requests shown as prototype are saved on this device only." };
+  return { kind: "unavailable", message: "Backend requests could not be loaded. Please refresh to try again." };
 }
 
-// RLS remains authoritative for backend rows. Local storage has no RLS, so it
-// must never be treated as a shared admin/reviewer store.
-export function selectVisibleRequests<T extends { userId: string | null; prototype: boolean }>(
+// RLS decides which rows load; My Requests further narrows to the signed-in user.
+export function selectVisibleRequests<T extends { userId: string | null }>(
   requests: readonly T[], userId: string | undefined, onlyMine: boolean,
 ): T[] {
   if (!userId) return [];
   return requests.filter((request) =>
-    request.prototype || onlyMine ? request.userId === userId : true,
+    onlyMine ? request.userId === userId : true,
   );
 }
 
