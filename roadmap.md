@@ -32,6 +32,9 @@ Verification limits: the existing Requester session returns no backend requests;
 
 # Issue #10 — F10
 
+- [x] Inspect available isolated test options and prepare the setup/production approval plan.
+- [ ] Create and verify an isolated test environment — waiting for setup approval; stop if a draft uses the live database.
+
 - [x] Complete code-only exact-role/AAL2 remediation, stale-event handling, expanded review-only SQL tests, and non-destructive recovery documentation.
 - [x] Run the full suite and automatic checks; update the F10 report and commit without applying SQL or merging PR #205.
 
