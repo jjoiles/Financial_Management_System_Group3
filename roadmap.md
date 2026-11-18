@@ -33,9 +33,11 @@ Verification limits: the existing Requester session returns no backend requests;
 # Issue #10 — F10
 
 - [x] Inspect submission, routing, F11 notifications, request access, and hosted reviewer availability.
-- [ ] Obtain approval for the F10 plan and the explicitly scoped shared-database change.
-- [ ] Implement persisted private reviewer alerts, duplicate prevention, secure request links, and read/unread states.
-- [ ] Add focused and database integration tests; run the full suite and verify automatic checks.
-- [ ] Write the F10 verification report and commit on the current feature branch without merging.
+- [x] Obtain approval for application code/tests and unapplied SQL preparation only.
+- [x] Implement reviewer alert application code, secure links, read/unread states, and unavailable-table handling; prepare generation/RLS SQL outside executable migration folders.
+- [x] Run focused and full automated tests and inspect automatic checks; do not execute database integration changes.
+- [x] Write the F10 verification report and commit on the current feature branch without merging.
+- [ ] Enable persisted reviewer delivery — blocked pending separate explicit approval to apply reviewed SQL.
+- [ ] Verify real signed-in reviewer delivery/read/link/privacy — blocked by unapplied schema and no existing authorized reviewer; requester session unavailable this turn.
 
-Blockers: no reviewer/admin role records or named reviewer assignments exist; the hosted database is shared with production. No database, permission, configuration, account, or role changes are authorized yet.
+Blockers: no reviewer/admin role records or named reviewer assignments exist; the hosted database is shared with production. Database SQL must remain unapplied pending separate explicit approval. No accounts, role assignments, existing records, permissions, or production configuration may change.

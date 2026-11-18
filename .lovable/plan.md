@@ -16,7 +16,7 @@
 5. Create alerts only for persisted requests, not local prototypes. With no eligible reviewers, save the request normally and record an internal unassigned outcome, without inventing recipients or claiming delivery.
 
 ## Technical details and approval scope
-**This plan requests approval for an additive change to the shared production database**, limited to F10:
+**Approved scope: application code and tests only.** Prepare the following SQL under `docs/f10/` for review, outside executable migration folders. Do not apply it to the shared database:
 - A separate reviewer notification table, with a recipient ID, request ID/number, event ID/reason, timestamps, and read state.
 - Explicit authenticated SELECT and column-only UPDATE of `read_at`; service-only generation. No anonymous access, browser INSERT/DELETE, or changes to existing request/role/F11 permissions.
 - New row-level policies require the signed-in recipient, a current reviewer/admin role, and current request read permission. Losing the role removes alert access.
@@ -28,10 +28,10 @@
 
 ## Verification
 - Add concrete automated tests for recipients, role revocation/access denial, event deduplication, repeated attention transitions, read/unread changes, safe links, no reviewers, unavailable notifications, and preserved F11 behavior.
-- Add rollback-only database integration tests for private access, grants, trigger delivery, idempotent retries, and non-blocking failures. Run only with available authorized privileges; never elevate to force tests through.
+- Prepare database integration assertions for a future isolated authorized environment; do not execute database changes or failure injection against the shared database.
 - Run the full automated suite and inspect platform TypeScript/production checks; do not manually run builds.
 - Verify requester regression flows using the existing session. A real reviewer end-to-end delivery/read/link check is **blocked until an authorized reviewer account is available**; do not create accounts or assign roles without separate approval. Controlled browser responses are not proof of real reviewer delivery.
 - Produce `docs/F10_Verification_Report.md` listing exact changed files, before/after behavior, actual results, and any blocked checks. Commit only on the current feature branch; no merge or publish.
 
 ## Approval decision
-Approve this plan to authorize implementation and the narrowly scoped **shared-database F10 schema, trigger, and new-table permissions** above. Existing request/role/F11 permissions and production configuration remain unchanged. If shared-database changes are not approved, only a non-enabled frontend and test implementation can be prepared; persisted automated reviewer notifications cannot honestly be delivered using the current schema.
+The user approved code-only implementation on November 18, 2026. **No migration, policy, permission, configuration, existing-data, account, or role change is approved.** SQL is review material only; request separate explicit approval before any application. Automated generation and real reviewer delivery remain blocked until approved SQL is applied and an existing authorized reviewer is available. Do not merge into main.

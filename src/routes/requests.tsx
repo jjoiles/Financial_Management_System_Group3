@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useAuth } from "@/lib/auth-context";
+import { linkedAuthorizedRequest, validRequestLink } from "@/lib/reviewer-notifications";
 import { useFinancialRequests, type EnrichedRequest } from "@/lib/requests-data";
 import StatusBadge from "@/components/StatusBadge";
 import RequestDetailDialog from "@/components/RequestDetailDialog";
@@ -15,6 +17,7 @@ import RequestExportAction from "@/components/RequestExportAction";
 
 export const Route = createFileRoute("/requests")({
   component: RequestsPage,
+  validateSearch: (search: Record<string, unknown>): { request?: string } => ({ request: validRequestLink(search.request) }),
   head: () => ({
     meta: [
       { title: "All Requests — FinReq" },
@@ -28,6 +31,9 @@ export const Route = createFileRoute("/requests")({
 });
 
 function RequestsPage() {
+  const auth = useAuth();
+  const { request: linkedRequestId } = Route.useSearch();
+  const [closedLink, setClosedLink] = useState<string | undefined>();
   const { data, loading, readIssue, reload } = useFinancialRequests();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "">("");
@@ -48,6 +54,11 @@ function RequestsPage() {
   // The page displays Pending first, then Decided, each in the selected F12
   // order. Export those exact rows in that same displayed order.
   const visibleRows = [...pending, ...decided];
+  const blocked = loading || !!readIssue || !auth.user || auth.needsMfa;
+  const linked = linkedAuthorizedRequest(data, linkedRequestId, blocked);
+  const currentSelection = linkedRequestId && closedLink !== linkedRequestId
+    ? linked : linkedAuthorizedRequest(data, selected?.uuid, blocked) ??
+      (!blocked ? data.find(row => row.uuid === selected?.uuid) ?? null : null);
 
   return (
     <div className="space-y-5">
@@ -120,6 +131,9 @@ function RequestsPage() {
       </div>
 
       <RequestReadNotice issue={readIssue} />
+      {linkedRequestId && !blocked && !linked && <p role="alert" className="text-sm text-muted-foreground">
+        This request is unavailable or you do not have access to it.
+      </p>}
 
       {listState === "loading" ? (
         <div className="flex items-center justify-center rounded-2xl border border-border bg-card py-16 text-sm text-muted-foreground">
@@ -145,10 +159,11 @@ function RequestsPage() {
       )}
 
       <RequestDetailDialog
-        request={selected}
-        onClose={() => setSelected(null)}
+        request={currentSelection}
+        onClose={() => { setSelected(null); setClosedLink(linkedRequestId); }}
         onDecisionRecorded={async () => {
           setSelected(null);
+          setClosedLink(linkedRequestId);
           await reload();
         }}
       />
