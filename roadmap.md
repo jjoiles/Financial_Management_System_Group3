@@ -29,3 +29,6 @@ Verification limits: the existing Requester session returns no backend requests;
 - [x] Add identity-scoped automatic tracking checks without database changes; user approved the polling alternative.
 - [x] Test status refresh, cleanup, errors, reconnection, authorization, and preserved list behavior.
 - [x] Verify preview and automatic checks; document limitations and commit on the F9 branch without merging.
+## Auth signup recovery (fix/auth-signup-recovery)
+- [x] Resend confirmation, unconfirmed-email message, forgot/reset password, no prefilled data, no signup profile write, tests
+- [x] Constraint: no third-party email service (Resend) — use built-in account emails only

@@ -2,6 +2,14 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { Building2, KeyRound, Lock, Mail, QrCode, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import {
+  NEUTRAL_RESEND_MESSAGE,
+  NEUTRAL_RESET_MESSAGE,
+  SIGNUP_CONFIRM_MESSAGE,
+  describeAuthError,
+  isEmailNotConfirmedError,
+  isValidEmail,
+} from "@/lib/auth-recovery";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -20,11 +28,13 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const auth = useAuth();
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [email, setEmail] = useState("faculty@howard.edu");
-  const [password, setPassword] = useState("SecurePass123!");
-  const [displayName, setDisplayName] = useState("Dr. Sarah Chen");
-  const [department, setDepartment] = useState("Chemistry");
+  const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [department, setDepartment] = useState("");
+  const [showResend, setShowResend] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
   const [setup, setSetup] = useState<{ factorId: string; qrCode: string; secret: string } | null>(null);
   const [message, setMessage] = useState("");
@@ -37,18 +47,58 @@ function LoginPage() {
     setError("");
     setMessage("");
 
+    if (!isValidEmail(email)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+    setBusy(true);
     try {
+      if (mode === "forgot") {
+        await auth.requestPasswordReset(email);
+        setMessage(NEUTRAL_RESET_MESSAGE);
+        return;
+      }
       if (mode === "signup") {
         await auth.signUp(email, password, displayName, department);
-        setMessage("Account created. Check your email to confirm, then sign in and enroll your authenticator app.");
+        setMessage(SIGNUP_CONFIRM_MESSAGE);
+        setShowResend(true);
+        setPassword("");
         setMode("signin");
         return;
       }
       await auth.signIn(email, password);
+      setShowResend(false);
       setMessage("Password accepted. Complete the authenticator step to continue.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Authentication failed.");
+      if (isEmailNotConfirmedError(err)) setShowResend(true);
+      setError(describeAuthError(err));
+    } finally {
+      setBusy(false);
     }
+  };
+
+  const resendConfirmation = async () => {
+    setError("");
+    setMessage("");
+    if (!isValidEmail(email)) {
+      setError("Enter the email address you signed up with, then resend.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await auth.resendConfirmation(email);
+      setMessage(NEUTRAL_RESEND_MESSAGE);
+    } catch (err) {
+      setError(describeAuthError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const switchMode = (next: "signin" | "signup" | "forgot") => {
+    setMode(next);
+    setError("");
+    setMessage("");
   };
 
   const startTotpSetup = async () => {
@@ -134,7 +184,7 @@ function LoginPage() {
 
           <div className="rounded-2xl border border-border bg-card p-6 shadow-xl shadow-primary/5">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-card-foreground">{auth.user ? "Two-factor verification" : mode === "signin" ? "Sign in" : "Create account"}</h2>
+              <h2 className="text-2xl font-bold text-card-foreground">{auth.user ? "Two-factor verification" : mode === "signin" ? "Sign in" : mode === "forgot" ? "Reset password" : "Create account"}</h2>
               <p className="mt-1 text-sm text-muted-foreground">Secure access for requesters, reviewers, and leadership.</p>
             </div>
 
@@ -142,21 +192,48 @@ function LoginPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 {mode === "signup" && (
                   <>
-                    <Field icon={UserRound} label="Display name" value={displayName} onChange={setDisplayName} />
-                    <Field icon={Building2} label="Department" value={department} onChange={setDepartment} />
+                    <Field icon={UserRound} label="Display name" value={displayName} onChange={setDisplayName} autoComplete="name" />
+                    <Field icon={Building2} label="Department" value={department} onChange={setDepartment} autoComplete="organization" />
                   </>
                 )}
-                <Field icon={Mail} label="Email" type="email" value={email} onChange={setEmail} />
-                <Field icon={Lock} label="Password" type="password" value={password} onChange={setPassword} />
-                <button type="submit" className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">
-                  {mode === "signin" ? "Continue securely" : "Create secure account"}
+                <Field icon={Mail} label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" />
+                {mode !== "forgot" && (
+                  <Field icon={Lock} label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "signup" ? "new-password" : "current-password"} />
+                )}
+                {mode === "signin" && (
+                  <div className="text-right">
+                    <button type="button" onClick={() => switchMode("forgot")} className="text-xs font-medium text-primary hover:underline">
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
+                <button type="submit" disabled={busy} className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
+                  {mode === "signin" ? "Continue securely" : mode === "forgot" ? "Email me a reset link" : "Create secure account"}
                 </button>
-                <button type="button" onClick={auth.signInWithGoogle} className="w-full rounded-md border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
-                  Continue with Google
-                </button>
-                <button type="button" onClick={() => setMode(mode === "signin" ? "signup" : "signin")} className="w-full text-sm font-medium text-primary hover:underline">
-                  {mode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in"}
-                </button>
+                {mode === "signin" && showResend && (
+                  <button type="button" disabled={busy} onClick={resendConfirmation} className="w-full rounded-md border border-primary/40 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary transition hover:bg-primary/10 disabled:opacity-60">
+                    Resend confirmation email
+                  </button>
+                )}
+                {mode !== "forgot" && (
+                  <button type="button" onClick={auth.signInWithGoogle} className="w-full rounded-md border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
+                    Continue with Google
+                  </button>
+                )}
+                {mode === "forgot" ? (
+                  <button type="button" onClick={() => switchMode("signin")} className="w-full text-sm font-medium text-primary hover:underline">
+                    Back to sign in
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => switchMode(mode === "signin" ? "signup" : "signin")} className="w-full text-sm font-medium text-primary hover:underline">
+                    {mode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+                  </button>
+                )}
+                {mode === "signin" && !showResend && (
+                  <button type="button" onClick={() => setShowResend(true)} className="w-full text-xs text-muted-foreground hover:text-foreground hover:underline">
+                    Didn't get your confirmation email?
+                  </button>
+                )}
               </form>
             ) : auth.needsMfa ? (
               <MfaPanel code={mfaCode} setCode={setMfaCode} onVerify={verifyCode} />
@@ -197,13 +274,13 @@ function LoginPage() {
   );
 }
 
-function Field({ icon: Icon, label, value, onChange, type = "text" }: { icon: typeof Mail; label: string; value: string; onChange: (value: string) => void; type?: string }) {
+function Field({ icon: Icon, label, value, onChange, type = "text", autoComplete }: { icon: typeof Mail; label: string; value: string; onChange: (value: string) => void; type?: string; autoComplete?: string }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-semibold text-foreground">{label}</span>
       <span className="relative block">
         <Icon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input required type={type} value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-ring" />
+        <input required type={type} autoComplete={autoComplete} value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-none transition focus:ring-2 focus:ring-ring" />
       </span>
     </label>
   );
