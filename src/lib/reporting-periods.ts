@@ -1,6 +1,27 @@
 import { z } from "zod";
 import { HOWARD_ACADEMIC_CALENDAR } from "@/lib/howard-academic-calendar";
 import { FISCAL_QUARTERS, deriveFiscalPeriod, type FiscalQuarter } from "@/lib/request-utils";
+import {
+  INSTITUTION_TIME_ZONE,
+  UTC_TIME_ZONE,
+  isValidLocalDate,
+  localDateRangeToUtcBounds,
+  toValidInstant,
+  utcMidnight,
+  type InstantInput,
+  type LocalDateRange,
+  type PeriodBounds,
+} from "@/lib/time-zones";
+
+// F18.3: these helpers and types moved to time-zones.ts. They are re-exported
+// here so existing imports keep working and refer to the same functions.
+export {
+  isValidLocalDate,
+  nextLocalDate,
+  toValidInstant,
+  zonedLocalMidnightToUtc,
+} from "@/lib/time-zones";
+export type { LocalDateRange, PeriodBounds } from "@/lib/time-zones";
 
 /**
  * F18.1: Institutional reporting periods.
@@ -20,6 +41,10 @@ import { FISCAL_QUARTERS, deriveFiscalPeriod, type FiscalQuarter } from "@/lib/r
  * - The two policies differ on purpose. For example, 9 pm Eastern on
  *   August 31 is already September in UTC, so it is in the September
  *   calendar month while still being in August for the academic calendar.
+ * - F18.3: REPORTING_PERIOD_TIME_ZONES records this zone for each period
+ *   kind, and the conversion helpers live in time-zones.ts (see
+ *   docs/F18_Timezone_Handling.md). The viewer's own time zone never changes
+ *   which period an instant belongs to.
  *
  * Interval policy
  * - Every period is half-open: startUtc <= instant < endExclusiveUtc. Adjacent
@@ -65,19 +90,25 @@ export const REPORTING_PERIOD_KINDS = ["fiscal", "academic", "calendar-month"] a
 export type ReportingPeriodKind = (typeof REPORTING_PERIOD_KINDS)[number];
 
 /** Time zone in which Howard's academic calendar dates are published. */
-export const ACADEMIC_TIME_ZONE = "America/New_York" as const;
+export const ACADEMIC_TIME_ZONE = INSTITUTION_TIME_ZONE;
+
+/**
+ * F18.3: The zone in which each kind of reporting period has its boundaries.
+ * It describes existing behavior and does not change it: fiscal periods and
+ * calendar months are computed from UTC fields, and academic periods from
+ * Eastern local midnights. Filtering must use these zones, never the viewer's.
+ */
+export const REPORTING_PERIOD_TIME_ZONES = Object.freeze({
+  fiscal: UTC_TIME_ZONE,
+  "calendar-month": UTC_TIME_ZONE,
+  academic: ACADEMIC_TIME_ZONE,
+} as const satisfies Record<ReportingPeriodKind, string>);
 
 export const ACADEMIC_TERMS = ["fall", "spring", "summer"] as const;
 export type AcademicTerm = (typeof ACADEMIC_TERMS)[number];
 
 export const SUMMER_SESSIONS = ["summer-1", "summer-2", "summer-10wk"] as const;
 export type SummerSession = (typeof SUMMER_SESSIONS)[number];
-
-/** Half-open interval: startUtc <= instant < endExclusiveUtc. ISO-8601 UTC strings. */
-export interface PeriodBounds {
-  readonly startUtc: string;
-  readonly endExclusiveUtc: string;
-}
 
 interface BasePeriod extends PeriodBounds {
   readonly kind: ReportingPeriodKind;
@@ -144,16 +175,9 @@ export type AcademicPeriod = AcademicTermPeriod | AcademicSessionPeriod;
 export type ReportingPeriod = FiscalPeriod | AcademicPeriod | CalendarMonthPeriod;
 
 /** A Date, epoch milliseconds, or an ISO-8601 timestamp with "Z" or an explicit offset. */
-export type ReportingInstantInput = Date | number | string;
+export type ReportingInstantInput = InstantInput;
 
-// Academic calendar input (published local dates) ---------------------------
-
-export interface LocalDateRange {
-  /** YYYY-MM-DD, inclusive. */
-  readonly startDate: string;
-  /** YYYY-MM-DD, inclusive. */
-  readonly endDate: string;
-}
+// Academic calendar input (published local dates; LocalDateRange is in time-zones.ts)
 
 export interface AcademicCalendarSource {
   readonly url: string;
@@ -194,10 +218,6 @@ export type AcademicCalendar = readonly AcademicCalendarYear[];
 const MIN_KEY_YEAR = 1000;
 const MAX_KEY_YEAR = 9999;
 
-const MS_PER_SECOND = 1_000;
-const MS_PER_MINUTE = 60 * MS_PER_SECOND;
-const MS_PER_HOUR = 60 * MS_PER_MINUTE;
-
 const MONTH_NAMES = [
   "January",
   "February",
@@ -215,97 +235,6 @@ const MONTH_NAMES = [
 
 const pad = (value: number, width: number) => String(value).padStart(width, "0");
 
-/**
- * UTC midnight for a year, 0-based month and day. Unlike Date.UTC, this does
- * not map years 0–99 to 1900–1999, and out-of-range months and days roll over.
- */
-function utcMidnight(year: number, monthIndex: number, day: number): Date {
-  const date = new Date(0);
-  date.setUTCFullYear(year, monthIndex, day);
-  return date;
-}
-
-function daysInMonth(year: number, month: number): number {
-  return utcMidnight(year, month, 0).getUTCDate();
-}
-
-type LocalDateParts = { year: number; month: number; day: number };
-
-const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-function parseLocalDate(value: unknown): LocalDateParts | null {
-  if (typeof value !== "string") return null;
-  const match = LOCAL_DATE_PATTERN.exec(value);
-  if (!match) return null;
-  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
-  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return null;
-  return { year, month, day };
-}
-
-function formatLocalDate({ year, month, day }: LocalDateParts): string {
-  return `${pad(year, 4)}-${pad(month, 2)}-${pad(day, 2)}`;
-}
-
-/** True for a real calendar date written as YYYY-MM-DD. */
-export function isValidLocalDate(value: unknown): value is string {
-  return parseLocalDate(value) !== null;
-}
-
-/** Returns the local date one day after `localDate` (YYYY-MM-DD). Not affected by DST. */
-export function nextLocalDate(localDate: string): string {
-  const parts = parseLocalDate(localDate);
-  if (!parts) {
-    throw new RangeError(`Invalid local date "${localDate}"; expected a real YYYY-MM-DD date`);
-  }
-  const next = utcMidnight(parts.year, parts.month - 1, parts.day + 1);
-  if (next.getUTCFullYear() > MAX_KEY_YEAR) {
-    throw new RangeError(`The day after "${localDate}" is outside the supported four-digit years`);
-  }
-  return formatLocalDate({
-    year: next.getUTCFullYear(),
-    month: next.getUTCMonth() + 1,
-    day: next.getUTCDate(),
-  });
-}
-
-const ISO_INSTANT_PATTERN =
-  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(?:Z|[+-](\d{2}):(\d{2}))$/;
-
-function parseIsoInstant(value: string): Date | null {
-  const match = ISO_INSTANT_PATTERN.exec(value);
-  if (!match) return null;
-  const [, year, month, day, hour, minute, second = "0", offsetHour = "0", offsetMinute = "0"] =
-    match;
-  if (!parseLocalDate(`${year}-${month}-${day}`)) return null;
-  if (Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59) return null;
-  if (Number(offsetHour) > 23 || Number(offsetMinute) > 59) return null;
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? new Date(ms) : null;
-}
-
-/**
- * Converts input to a valid instant, or returns null. Never falls back to the
- * current time. Always returns a new Date, so callers cannot mutate the input.
- *
- * Accepts a valid Date, finite epoch milliseconds, or a string matching
- * `YYYY-MM-DDTHH:mm[:ss[.fraction]]` plus `Z` or `±HH:mm` (fraction: 1–9
- * digits). The date and time parts must be real (no February 30, no hour 24).
- * See the module header for the formats that are rejected and why.
- */
-export function toValidInstant(input: ReportingInstantInput | null | undefined): Date | null {
-  let ms: number;
-  if (input instanceof Date) {
-    ms = input.getTime();
-  } else if (typeof input === "number") {
-    ms = new Date(input).getTime();
-  } else if (typeof input === "string") {
-    return parseIsoInstant(input);
-  } else {
-    return null;
-  }
-  return Number.isFinite(ms) ? new Date(ms) : null;
-}
-
 /** True when `input` is a valid instant with startUtc <= instant < endExclusiveUtc. */
 export function isWithinPeriod(
   period: PeriodBounds,
@@ -315,91 +244,6 @@ export function isWithinPeriod(
   if (!instant) return false;
   const time = instant.getTime();
   return Date.parse(period.startUtc) <= time && time < Date.parse(period.endExclusiveUtc);
-}
-
-// ---------------------------------------------------------------------------
-// Time zone conversion (built-in Intl; no extra dependency)
-// ---------------------------------------------------------------------------
-
-const zoneFormatters = new Map<string, Intl.DateTimeFormat>();
-
-function getZoneFormatter(timeZone: string): Intl.DateTimeFormat {
-  let formatter = zoneFormatters.get(timeZone);
-  if (!formatter) {
-    formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      hourCycle: "h23",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-    zoneFormatters.set(timeZone, formatter);
-  }
-  return formatter;
-}
-
-type WallClock = LocalDateParts & { hour: number; minute: number; second: number };
-
-function readWallClock(ms: number, timeZone: string): WallClock {
-  const parts = getZoneFormatter(timeZone).formatToParts(new Date(ms));
-  const read = (type: Intl.DateTimeFormatPartTypes) =>
-    Number(parts.find((part) => part.type === type)?.value);
-  return {
-    year: read("year"),
-    month: read("month"),
-    day: read("day"),
-    hour: read("hour"),
-    minute: read("minute"),
-    second: read("second"),
-  };
-}
-
-/** The zone's offset from UTC, in milliseconds, at the given instant. */
-function zoneOffsetMs(ms: number, timeZone: string): number {
-  const wall = readWallClock(ms, timeZone);
-  const wallAsUtc =
-    utcMidnight(wall.year, wall.month - 1, wall.day).getTime() +
-    wall.hour * MS_PER_HOUR +
-    wall.minute * MS_PER_MINUTE +
-    wall.second * MS_PER_SECOND;
-  return wallAsUtc - Math.floor(ms / MS_PER_SECOND) * MS_PER_SECOND;
-}
-
-/**
- * The UTC instant of local midnight at the start of `localDate` in `timeZone`.
- * For America/New_York this is 04:00Z during daylight time and 05:00Z otherwise.
- * Throws a RangeError for an invalid date, or if that local midnight does not
- * exist in the zone (it always exists in America/New_York, where DST changes at 02:00).
- */
-export function zonedLocalMidnightToUtc(
-  localDate: string,
-  timeZone: string = ACADEMIC_TIME_ZONE,
-): Date {
-  const parts = parseLocalDate(localDate);
-  if (!parts) {
-    throw new RangeError(`Invalid local date "${localDate}"; expected a real YYYY-MM-DD date`);
-  }
-  const wallAsUtc = utcMidnight(parts.year, parts.month - 1, parts.day).getTime();
-  // First guess with the offset at the wall time read as UTC, then correct once
-  // in case a DST change lies between the guess and the real instant.
-  let candidate = wallAsUtc - zoneOffsetMs(wallAsUtc, timeZone);
-  candidate = wallAsUtc - zoneOffsetMs(candidate, timeZone);
-
-  const check = readWallClock(candidate, timeZone);
-  if (
-    check.year !== parts.year ||
-    check.month !== parts.month ||
-    check.day !== parts.day ||
-    check.hour !== 0 ||
-    check.minute !== 0 ||
-    check.second !== 0
-  ) {
-    throw new RangeError(`Local midnight of ${localDate} does not exist in ${timeZone}`);
-  }
-  return new Date(candidate);
 }
 
 // ---------------------------------------------------------------------------
@@ -866,13 +710,7 @@ export function validateAcademicCalendar(candidate: unknown): AcademicCalendarVa
 }
 
 function localBounds(range: LocalDateRange): PeriodBounds {
-  return {
-    startUtc: zonedLocalMidnightToUtc(range.startDate, ACADEMIC_TIME_ZONE).toISOString(),
-    endExclusiveUtc: zonedLocalMidnightToUtc(
-      nextLocalDate(range.endDate),
-      ACADEMIC_TIME_ZONE,
-    ).toISOString(),
-  };
+  return localDateRangeToUtcBounds(range, ACADEMIC_TIME_ZONE);
 }
 
 function buildAcademicYearPeriods(year: AcademicCalendarYear): AcademicPeriod[] {

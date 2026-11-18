@@ -37,13 +37,14 @@ Dependency direction (arrows point to the module being imported):
 ```
 reporting-period-config.ts ──▶ reporting-periods.ts ──▶ howard-academic-calendar.ts ──▶ deep-freeze.ts
           │                            │
-          ├──▶ howard-academic-calendar.ts        └──▶ request-utils.ts (deriveFiscalPeriod)
-          └──▶ deep-freeze.ts
+          ├──▶ howard-academic-calendar.ts        ├──▶ request-utils.ts (deriveFiscalPeriod)
+          └──▶ deep-freeze.ts                     └──▶ time-zones.ts (F18.3; has no imports)
 ```
 
 Rules that keep this free of import cycles:
 
 - `howard-academic-calendar.ts` stays **data-only**. It may import types from `reporting-periods.ts` (`import type`), but never a value. A value import would create a runtime cycle: the calendar would run while the schema it needs does not exist yet, and the app would crash on load.
+- `time-zones.ts` has **no imports** at all (F18.3), so it can never be part of a cycle. See [F18_Timezone_Handling.md](F18_Timezone_Handling.md).
 - `reporting-periods.ts` must **not** import `reporting-period-config.ts`. It keeps `HOWARD_ACADEMIC_CALENDAR` as its default calendar. The configuration holds that same object, so default lookups and lookups through the configuration share one cache.
 
 ## 3. Period kinds

@@ -27,7 +27,8 @@ import {
  * - Fiscal periods: owned by deriveFiscalPeriod() in request-utils.ts and the
  *   f4_enforce_request_metadata() SQL trigger. They are unchanged.
  * - Calendar months: fixed UTC months; nothing to configure.
- * - Time zones: F18.3.
+ * - Time zones: a fixed policy, REPORTING_PERIOD_TIME_ZONES in
+ *   reporting-periods.ts (F18.3; see docs/F18_Timezone_Handling.md).
  *
  * See docs/F18_Reporting_Period_Configuration.md for the maintenance process.
  */
