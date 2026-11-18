@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFinancialRequests, type EnrichedRequest } from "@/lib/requests-data";
 import { useAuth } from "@/lib/auth-context";
 import StatusBadge from "@/components/StatusBadge";
@@ -10,23 +10,35 @@ import StatusFilterChips, { type StatusFilter } from "@/components/tracking/Stat
 import RequestCountSummary from "@/components/tracking/RequestCountSummary";
 import { FileText, Loader2, Plus, SearchX } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
+import { filterRequests, getRequestListState } from "@/lib/request-list";
+import RequestReadNotice from "@/components/RequestReadNotice";
 
 export const Route = createFileRoute("/tracking")({
   component: TrackingPage,
+  validateSearch: (search: Record<string, unknown>): { request?: string } => ({
+    request: typeof search.request === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(search.request)
+      ? search.request : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "My Requests — FinReq" },
       { name: "description", content: "Track status of your financial requests." },
+      { property: "og:title", content: "My Requests — FinReq" },
+      { property: "og:description", content: "Search your requests and follow their workflow status." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
 });
 
 function TrackingPage() {
   const auth = useAuth();
-  const { data, loading, reload } = useFinancialRequests();
+  const { data, loading, readIssue, reload, syncState } = useFinancialRequests({ onlyMine: true, automatic: true });
   const [selected, setSelected] = useState<EnrichedRequest | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
+  const { request: linkedRequestId } = Route.useSearch();
+  const openedLink = useRef<string | undefined>(undefined);
 
   const myRequests = useMemo(
     () =>
@@ -34,7 +46,7 @@ function TrackingPage() {
         if (!auth.user) return false;
         // Local prototype rows: only show ones saved by this signed-in user.
         if (r.prototype) return r.userId === auth.user.id;
-        return r.userId === auth.user.id || r.email === auth.user.email;
+        return r.userId === auth.user.id;
       }),
     [data, auth.user],
   );
@@ -52,17 +64,26 @@ function TrackingPage() {
     return counts;
   }, [myRequests]);
 
-  const filteredRequests = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return myRequests.filter((r) => {
-      if (statusFilter !== "All" && r.status !== statusFilter) return false;
-      if (!query) return true;
-      return r.title.toLowerCase().includes(query) || r.id.toLowerCase().includes(query);
-    });
-  }, [myRequests, search, statusFilter]);
+  useEffect(() => {
+    if (loading || readIssue || !linkedRequestId || openedLink.current === linkedRequestId) return;
+    const linked = myRequests.find(row => row.uuid === linkedRequestId && !row.prototype);
+    if (linked) {
+      setSelected(linked);
+      openedLink.current = linkedRequestId;
+    }
+  }, [loading, readIssue, linkedRequestId, myRequests]);
+
+  const filteredRequests = useMemo(
+    () => filterRequests(myRequests, { search, status: statusFilter, scope: "tracking" }),
+    [myRequests, search, statusFilter],
+  );
+  const listState = getRequestListState(loading, filteredRequests.length, readIssue);
 
   const isFiltered = search.trim() !== "" || statusFilter !== "All";
   const prototypeCount = filteredRequests.filter((r) => r.prototype).length;
+  // Always read the open detail from the latest authorized rows, not a stale snapshot.
+  const currentSelection = !readIssue && auth.user && !auth.needsMfa
+    ? myRequests.find(row => row.uuid === selected?.uuid) ?? null : null;
 
   const pending = filteredRequests.filter(
     (r) => r.status === "Submitted" || r.status === "Under Review",
@@ -88,6 +109,14 @@ function TrackingPage() {
         </Link>
       </div>
 
+      <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
+        {syncState === "offline" ? "Offline — displayed statuses may be out of date."
+          : syncState === "error" ? "Status checks failed — retrying automatically."
+          : syncState === "checking" ? "Checking request statuses…"
+          : syncState === "paused" ? "Status checks paused."
+          : "Statuses up to date"}
+      </p>
+
       {!loading && (
         <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -107,11 +136,16 @@ function TrackingPage() {
         </div>
       )}
 
-      {loading ? (
+      <RequestReadNotice issue={readIssue} />
+      {!loading && !readIssue && linkedRequestId && !myRequests.some(row => row.uuid === linkedRequestId && !row.prototype) && (
+        <p role="alert" className="text-sm text-muted-foreground">This request is unavailable or is not yours to view.</p>
+      )}
+
+      {listState === "loading" ? (
         <div className="flex items-center justify-center rounded-2xl border border-border bg-card py-16 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
         </div>
-      ) : myRequests.length === 0 ? (
+      ) : listState === "restricted" || listState === "unavailable" ? null : myRequests.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card py-20 shadow-sm">
           <FileText className="mb-3 h-10 w-10 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">You haven't submitted any requests yet.</p>
@@ -155,7 +189,7 @@ function TrackingPage() {
       )}
 
       <RequestDetailDialog
-        request={selected}
+        request={currentSelection}
         onClose={() => setSelected(null)}
         onDecisionRecorded={async () => {
           setSelected(null);

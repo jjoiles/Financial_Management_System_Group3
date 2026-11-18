@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1794977880135,
+      "tag": "0000_f12_restore_self_scoped_authorization_helpers",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794982082066,
+      "tag": "0001_f11_requester_status_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794982444411,
+      "tag": "0002_f11_restrict_notification_grants",
+      "breakpoints": true
+    }
+  ]
+}

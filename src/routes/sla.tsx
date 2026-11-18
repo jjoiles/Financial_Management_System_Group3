@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, CheckCircle2, Clock3, RefreshCw, Timer } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
+import { approvalStageClient } from "@/lib/approval-stage-client";
 
 import { calculateStageSla } from "@/lib/sla-utils";
 
@@ -19,6 +20,10 @@ export const Route = createFileRoute("/sla")({
         name: "description",
         content: "Monitor financial request approval deadlines and SLA performance.",
       },
+      { property: "og:title", content: "SLA Dashboard — FinReq" },
+      { property: "og:description", content: "Monitor financial request approval deadlines and SLA performance." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
 });
@@ -125,7 +130,7 @@ function SlaDashboardPage() {
     setError(null);
 
     try {
-      const { data: stageData, error: stageError } = await supabase
+      const { data: stageData, error: stageError } = await approvalStageClient
         .from("approval_stage_tracking")
         .select(
           "id, request_id, stage_order, queue_id, stage_name, started_at, deadline_at, completed_at, duration_hours, status",

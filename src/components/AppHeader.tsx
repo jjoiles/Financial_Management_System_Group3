@@ -1,15 +1,14 @@
 import { useState } from "react";
 import { useAppContext } from "@/lib/app-context";
 import { useAuth } from "@/lib/auth-context";
-import { mockNotifications, type UserRole } from "@/lib/mock-data";
-import { Bell, ChevronDown, LogOut, Menu, ShieldCheck, User } from "lucide-react";
+import { type UserRole } from "@/lib/mock-data";
+import { ChevronDown, LogOut, Menu, ShieldCheck, User } from "lucide-react";
+import RequesterNotifications from "@/components/RequesterNotifications";
 
 export default function AppHeader() {
   const { role, setRole } = useAppContext();
   const { profile, user, signOut, roles: availableRoles } = useAuth();
-  const [showNotifs, setShowNotifs] = useState(false);
   const [showRole, setShowRole] = useState(false);
-  const unread = mockNotifications.filter((n) => !n.read).length;
 
   const roleOptions: { value: UserRole; label: string }[] = [
     { value: "requester", label: "Faculty / Staff" },
@@ -39,7 +38,7 @@ export default function AppHeader() {
         {/* Role Switcher */}
         <div className="relative">
           <button
-            onClick={() => { setShowRole(!showRole); setShowNotifs(false); }}
+            onClick={() => { setShowRole(!showRole); }}
             className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
           >
             <User className="h-3.5 w-3.5 text-muted-foreground" />
@@ -63,44 +62,7 @@ export default function AppHeader() {
           )}
         </div>
 
-        {/* Notifications */}
-        <div className="relative">
-          <button
-            onClick={() => { setShowNotifs(!showNotifs); setShowRole(false); }}
-            className="relative flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background transition-colors hover:bg-accent"
-          >
-            <Bell className="h-4 w-4 text-muted-foreground" />
-            {unread > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
-                {unread}
-              </span>
-            )}
-          </button>
-          {showNotifs && (
-            <div className="absolute right-0 top-full mt-1 w-80 rounded-lg border border-border bg-card shadow-lg">
-              <div className="border-b border-border px-4 py-3">
-                <span className="text-sm font-semibold text-foreground">Notifications</span>
-              </div>
-              <div className="max-h-72 overflow-y-auto">
-                {mockNotifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`flex gap-3 border-b border-border/50 px-4 py-3 ${!n.read ? "bg-primary/5" : ""}`}
-                  >
-                    <div className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
-                      n.type === "success" ? "bg-success" : n.type === "warning" ? "bg-warning" : "bg-info"
-                    }`} />
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-foreground">{n.title}</p>
-                      <p className="text-xs text-muted-foreground">{n.message}</p>
-                      <p className="mt-1 text-[10px] text-muted-foreground/60">{n.time}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <RequesterNotifications />
 
         <div className="hidden min-w-0 items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 sm:flex">
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">

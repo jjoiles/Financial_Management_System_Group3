@@ -1,3 +1,4 @@
+import { isPublicAuthRoute } from "@/lib/auth-recovery";
 import { Outlet, Link, createRootRoute, HeadContent, Scripts, useLocation } from "@tanstack/react-router";
 import { useEffect } from "react";
 import appCss from "../styles.css?url";
@@ -74,7 +75,7 @@ function RootComponent() {
 function AppFrame() {
   const auth = useAuth();
   const location = useLocation();
-  const isLoginRoute = location.pathname === "/login";
+  const isLoginRoute = isPublicAuthRoute(location.pathname);
 
   useEffect(() => {
     if (!isLoginRoute && !auth.loading && (!auth.user || auth.needsMfa)) {
