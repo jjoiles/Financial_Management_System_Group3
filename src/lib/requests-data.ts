@@ -12,6 +12,7 @@ import { readRequestMetadata, type RequestMetadata } from "@/lib/request-utils";
 
 import { readPrototypeRequests as readPrototypeRequestStore } from "@/lib/prototype-store";
 import { classifyRequestReadError, selectVisibleRequests, type RequestReadIssue } from "@/lib/request-list";
+import { approvalStageClient } from "@/lib/approval-stage-client";
 
 type DbRow = {
   id: string;
@@ -165,7 +166,7 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
       let activeStages: ActiveStageRow[] = [];
 
       try {
-        const stageResult = await supabase
+        const stageResult = await approvalStageClient
           .from("approval_stage_tracking")
           .select(
             "id, request_id, stage_order, queue_id, stage_name, started_at, deadline_at, duration_hours",

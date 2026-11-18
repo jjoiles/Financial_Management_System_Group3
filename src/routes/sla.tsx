@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, CheckCircle2, Clock3, RefreshCw, Timer } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
+import { approvalStageClient } from "@/lib/approval-stage-client";
 
 import { calculateStageSla } from "@/lib/sla-utils";
 
@@ -125,7 +126,7 @@ function SlaDashboardPage() {
     setError(null);
 
     try {
-      const { data: stageData, error: stageError } = await supabase
+      const { data: stageData, error: stageError } = await approvalStageClient
         .from("approval_stage_tracking")
         .select(
           "id, request_id, stage_order, queue_id, stage_name, started_at, deadline_at, completed_at, duration_hours, status",
