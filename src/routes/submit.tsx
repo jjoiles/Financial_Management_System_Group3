@@ -15,6 +15,10 @@ export const Route = createFileRoute("/submit")({
     meta: [
       { title: "Submit Request — FinReq" },
       { name: "description", content: "Submit a validated financial request with attachments and automated workflow routing." },
+      { property: "og:title", content: "Submit Request — FinReq" },
+      { property: "og:description", content: "Submit a validated financial request with attachments and automated workflow routing." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
 });
