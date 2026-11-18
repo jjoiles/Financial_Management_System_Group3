@@ -86,20 +86,19 @@ describe("F9 automatic request status checks", () => {
   it("keeps authorization failures distinct from empty results", () => {
     expect(classifyRequestReadError({ code: "42501", message: "permission denied" }).kind).toBe("access");
   });
-  it("preserves owner restrictions, local-only labels, and filters after status changes", () => {
+  it("preserves owner restrictions and filters after status changes", () => {
     const rows = [
-      { id: "FR-1", title: "Travel", userId: "owner", prototype: false, status: "Submitted", fundingType: "Department", amount: 100, createdAt: "2026-11-18" },
-      { id: "FR-2", title: "Travel", userId: "other", prototype: false, status: "Approved", fundingType: "Department", amount: 200, createdAt: "2026-11-18" },
-      { id: "FR-3", title: "Local", userId: "owner", prototype: true, status: "Submitted", fundingType: "Department", amount: 300, createdAt: "2026-11-18" },
+      { id: "FR-1", title: "Travel", userId: "owner", status: "Submitted", fundingType: "Department", amount: 100, createdAt: "2026-11-18" },
+      { id: "FR-2", title: "Travel", userId: "other", status: "Approved", fundingType: "Department", amount: 200, createdAt: "2026-11-18" },
+      { id: "FR-3", title: "Local", userId: "owner", status: "Submitted", fundingType: "Department", amount: 300, createdAt: "2026-11-18" },
     ].map(row => ({ ...row, email: "", department: "Finance", submittedAt: "2026-11-18" })) as Array<{
-      id: string; title: string; userId: string; prototype: boolean; status: "Submitted" | "Approved";
+      id: string; title: string; userId: string; status: "Submitted" | "Approved";
       fundingType: "Department"; amount: number; createdAt: string; email: string; department: string; submittedAt: string;
     }>;
     const visible = selectVisibleRequests(rows, "owner", true);
     expect(visible.map(row => row.id)).toEqual(["FR-1", "FR-3"]);
     const updated = visible.map(row => row.id === "FR-1" ? { ...row, status: "Approved" as const } : row);
     expect(sortRequests(filterRequests(updated, { search: "Travel", status: "Approved", scope: "tracking" }), "amount-desc").map(row => row.id)).toEqual(["FR-1"]);
-    expect(updated.find(row => row.id === "FR-3")?.prototype).toBe(true);
     expect(updated.find(row => row.id === "FR-3")?.status).toBe("Submitted");
   });
 });
