@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  associateUserWithRoles,
   hasPermission,
   isSystemRole,
   mapDatabaseRoleToPortalRole,
   resolveUserRoles,
+  retrieveSignedInUserRoles,
   ROLE_PERMISSION_MATRIX,
   SYSTEM_ROLES,
+  validateControlledRoleAssignment,
 } from "./rbac";
 
 describe("F21.1: Define Roles & Permissions (F21.1.1–F21.1.3)", () => {
@@ -82,3 +85,88 @@ describe("F21.1: Define Roles & Permissions (F21.1.1–F21.1.3)", () => {
     expect(hasPermission(noRoleFallback.recognizedRoles, "requests:review_decision")).toBe(false);
   });
 });
+
+describe("F21.2: User-Role Management (F21.2.1–F21.2.3)", () => {
+  it("associates authenticated users with their validated roles and rejects missing userId (F21.2.1)", () => {
+    expect(associateUserWithRoles({ userId: null, rawRoles: ["admin"] })).toBeNull();
+    expect(associateUserWithRoles({ userId: "   ", rawRoles: ["admin"] })).toBeNull();
+
+    const association = associateUserWithRoles({
+      userId: "user-123",
+      rawRoles: ["reviewer", "requester"],
+    });
+    expect(association).toEqual({
+      userId: "user-123",
+      systemRoles: ["reviewer", "requester"],
+      portalRoles: ["admin", "requester"],
+      primaryRole: "reviewer",
+      fallbackApplied: false,
+    });
+  });
+
+  it("retrieves user roles on sign-in and falls back safely to requester on query failure (F21.2.2)", async () => {
+    const signedIn = await retrieveSignedInUserRoles("user-456", async () => ({
+      data: [{ role: "leadership" }],
+      error: null,
+    }));
+    expect(signedIn?.systemRoles).toEqual(["leadership"]);
+    expect(signedIn?.portalRoles).toEqual(["leadership"]);
+    expect(signedIn?.fallbackApplied).toBe(false);
+
+    const onQueryError = await retrieveSignedInUserRoles("user-456", async () => ({
+      data: null,
+      error: { message: "connection timeout" },
+    }));
+    expect(onQueryError?.systemRoles).toEqual(["requester"]);
+    expect(onQueryError?.portalRoles).toEqual(["requester"]);
+    expect(onQueryError?.fallbackApplied).toBe(true);
+  });
+
+  it("enforces controlled role assignment and blocks unauthorized or self-demoting changes (F21.2.3)", () => {
+    // Unauthenticated actor blocked
+    expect(
+      validateControlledRoleAssignment({
+        actorUserId: null,
+        actorRoles: ["admin"],
+        targetUserId: "user-2",
+        newRole: "reviewer",
+      }),
+    ).toMatchObject({ allowed: false, code: "UNAUTHENTICATED_ACTOR" });
+
+    // Non-admin actor blocked
+    expect(
+      validateControlledRoleAssignment({
+        actorUserId: "user-1",
+        actorRoles: ["reviewer", "leadership"],
+        targetUserId: "user-2",
+        newRole: "reviewer",
+      }),
+    ).toMatchObject({ allowed: false, code: "FORBIDDEN_ROLE_ASSIGNMENT" });
+
+    // Admin self-demotion blocked
+    expect(
+      validateControlledRoleAssignment({
+        actorUserId: "admin-1",
+        actorRoles: ["admin"],
+        targetUserId: "admin-1",
+        newRole: "requester",
+      }),
+    ).toMatchObject({ allowed: false, code: "SELF_ADMIN_DEMOTION_BLOCKED" });
+
+    // Valid admin role assignment allowed
+    expect(
+      validateControlledRoleAssignment({
+        actorUserId: "admin-1",
+        actorRoles: ["admin"],
+        targetUserId: "user-2",
+        newRole: "reviewer",
+      }),
+    ).toEqual({
+      allowed: true,
+      actorUserId: "admin-1",
+      targetUserId: "user-2",
+      assignedRole: "reviewer",
+    });
+  });
+});
+

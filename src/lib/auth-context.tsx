@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 import type { UserRole } from "@/lib/mock-data";
 import { withTransientRetry } from "@/lib/backend-errors";
+import { mapDatabaseRoleToPortalRole, retrieveSignedInUserRoles } from "@/lib/rbac";
 
 type Profile = {
   display_name: string;
@@ -37,12 +38,7 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const mapRole = (role: string): UserRole | null => {
-  if (role === "admin" || role === "reviewer") return "admin";
-  if (role === "leadership") return "leadership";
-  if (role === "requester") return "requester";
-  return null;
-};
+const mapRole = (role: string): UserRole | null => mapDatabaseRoleToPortalRole(role);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -113,25 +109,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(fallbackProfile);
     }
 
-    // Load database roles regardless of profile-loading outcome.
-    try {
-      const { data: roleData, error: roleError } = await withTransientRetry(() =>
-        supabase.from("user_roles").select("role").eq("user_id", activeUser.id),
-      );
-
-      if (roleError) {
-        setRoles(["requester"]);
-        return;
-      }
-
-      const mapped = roleData
-        ?.map((item: { role: string }) => mapRole(item.role))
-        .filter(Boolean) as UserRole[] | undefined;
-
-      setRoles(mapped?.length ? mapped : ["requester"]);
-    } catch {
-      setRoles(["requester"]);
-    }
+    // F21.2.1 & F21.2.2: Load and associate database roles on sign-in.
+    const roleAssociation = await retrieveSignedInUserRoles(activeUser.id, (uid) =>
+      withTransientRetry(() => supabase.from("user_roles").select("role").eq("user_id", uid)),
+    );
+    setRoles(roleAssociation?.portalRoles ?? (mapRole("requester") ? ["requester"] : []));
   };
 
   useEffect(() => {

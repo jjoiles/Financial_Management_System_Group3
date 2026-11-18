@@ -233,3 +233,155 @@ export function hasPermission(
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// F21.2: User-Role Management (F21.2.1, F21.2.2, F21.2.3)
+// ---------------------------------------------------------------------------
+
+export type UserRoleAssociation = {
+  userId: string;
+  systemRoles: SystemRole[];
+  portalRoles: UserRole[];
+  primaryRole: SystemRole;
+  fallbackApplied: boolean;
+};
+
+/**
+ * F21.2.1: Associates an authenticated user ID with their validated system and
+ * portal roles. Returns `null` when `userId` is missing or blank.
+ */
+export function associateUserWithRoles(params: {
+  userId: string | null | undefined;
+  rawRoles: readonly unknown[] | null | undefined;
+}): UserRoleAssociation | null {
+  const cleanUserId = typeof params.userId === "string" ? params.userId.trim() : "";
+  if (!cleanUserId) return null;
+
+  const resolved = resolveUserRoles(params.rawRoles, {
+    isAuthenticated: true,
+    allowLeastPrivilegeFallback: true,
+  });
+
+  return {
+    userId: cleanUserId,
+    systemRoles: resolved.recognizedRoles,
+    portalRoles: resolved.portalRoles.length > 0 ? resolved.portalRoles : ["requester"],
+    primaryRole: resolved.effectivePrimaryRole ?? "requester",
+    fallbackApplied: resolved.fallbackApplied,
+  };
+}
+
+export type RoleRow = { role: string };
+
+/**
+ * F21.2.2: Retrieves an authenticated user's roles upon sign-in from the
+ * provided role query port (`public.user_roles`), applying least-privilege
+ * `requester` fallback if the query fails or returns no recognized roles.
+ */
+export async function retrieveSignedInUserRoles(
+  userId: string | null | undefined,
+  fetchRoleRows: (uid: string) => Promise<{ data: readonly RoleRow[] | null; error: unknown }>,
+): Promise<UserRoleAssociation | null> {
+  const cleanUserId = typeof userId === "string" ? userId.trim() : "";
+  if (!cleanUserId) return null;
+
+  try {
+    const { data, error } = await fetchRoleRows(cleanUserId);
+    if (error || !Array.isArray(data)) {
+      return associateUserWithRoles({ userId: cleanUserId, rawRoles: [] });
+    }
+    return associateUserWithRoles({
+      userId: cleanUserId,
+      rawRoles: data.map((row) => row.role),
+    });
+  } catch {
+    return associateUserWithRoles({ userId: cleanUserId, rawRoles: [] });
+  }
+}
+
+export type ControlledRoleChangeRequest = {
+  actorUserId: string | null | undefined;
+  actorRoles: readonly unknown[] | null | undefined;
+  targetUserId: string | null | undefined;
+  newRole: unknown;
+};
+
+export type ControlledRoleChangeResult =
+  | {
+      allowed: true;
+      actorUserId: string;
+      targetUserId: string;
+      assignedRole: SystemRole;
+    }
+  | {
+      allowed: false;
+      code:
+        | "UNAUTHENTICATED_ACTOR"
+        | "FORBIDDEN_ROLE_ASSIGNMENT"
+        | "INVALID_TARGET_USER"
+        | "INVALID_ROLE"
+        | "SELF_ADMIN_DEMOTION_BLOCKED";
+      message: string;
+    };
+
+/**
+ * F21.2.3: Validates and authorizes a controlled role assignment or role change.
+ * Only authenticated administrators with `roles:assign` may assign roles, target
+ * user and new role must be valid, and an admin cannot demote themselves out of
+ * admin rights.
+ */
+export function validateControlledRoleAssignment(
+  request: ControlledRoleChangeRequest,
+): ControlledRoleChangeResult {
+  const actorId = typeof request.actorUserId === "string" ? request.actorUserId.trim() : "";
+  if (!actorId) {
+    return {
+      allowed: false,
+      code: "UNAUTHENTICATED_ACTOR",
+      message: "You must be signed in to manage user roles.",
+    };
+  }
+
+  if (!hasPermission(request.actorRoles, "roles:assign")) {
+    return {
+      allowed: false,
+      code: "FORBIDDEN_ROLE_ASSIGNMENT",
+      message: "Only system administrators are authorized to assign or change user roles.",
+    };
+  }
+
+  const targetId = typeof request.targetUserId === "string" ? request.targetUserId.trim() : "";
+  if (!targetId) {
+    return {
+      allowed: false,
+      code: "INVALID_TARGET_USER",
+      message: "A valid target user ID is required for role assignment.",
+    };
+  }
+
+  const normalizedRole =
+    typeof request.newRole === "string" ? request.newRole.trim().toLowerCase() : "";
+  if (!isSystemRole(normalizedRole)) {
+    return {
+      allowed: false,
+      code: "INVALID_ROLE",
+      message: `Unrecognized system role "${String(request.newRole)}".`,
+    };
+  }
+
+  if (actorId === targetId && normalizedRole !== "admin") {
+    return {
+      allowed: false,
+      code: "SELF_ADMIN_DEMOTION_BLOCKED",
+      message: "Administrators cannot remove their own admin role.",
+    };
+  }
+
+  return {
+    allowed: true,
+    actorUserId: actorId,
+    targetUserId: targetId,
+    assignedRole: normalizedRole,
+  };
+}
+
