@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createReviewerNotificationService, linkedAuthorizedRequest, reviewerNotificationError,
+import { createReviewerNotificationService, hasF10ReviewerAccess, linkedAuthorizedRequest, reviewerNotificationError,
   validRequestLink, visibleReviewerNotifications, type ReviewerNotification } from "./reviewer-notifications";
 
 const requestId = "12345678-1234-1234-1234-123456789abc";
@@ -14,6 +14,23 @@ const setup = () => {
   return { authorized, read, setRead, service: createReviewerNotificationService({ authorized, read, setRead }) };
 };
 describe("F10 private reviewer notification application contract", () => {
+  it.each(["reviewer", "admin"])("allows exact %s membership only at AAL2", role => {
+    expect(hasF10ReviewerAccess([role], "aal2")).toBe(true);
+  });
+  it.each([{ roles: [] }, { roles: ["requester"] }, { roles: ["leadership"] }, { roles: ["moderator"] }])("denies non-reviewer roles $roles at AAL2", ({ roles }) => {
+    expect(hasF10ReviewerAccess(roles, "aal2")).toBe(false);
+  });
+  it.each(["aal1", undefined, null, "invalid"])("denies reviewer/admin without AAL2 (%s)", assurance => {
+    expect(hasF10ReviewerAccess(["reviewer", "admin"], assurance)).toBe(false);
+  });
+  it("removes access after reviewer revocation even when leadership remains", () => {
+    expect(hasF10ReviewerAccess(["reviewer", "leadership"], "aal2")).toBe(true);
+    expect(hasF10ReviewerAccess(["leadership"], "aal2")).toBe(false);
+  });
+  it("allows a dual-role reviewer without broadening leadership-only access", () => {
+    expect(hasF10ReviewerAccess(["leadership", "admin"], "aal2")).toBe(true);
+    expect(hasF10ReviewerAccess(["leadership"], "aal2")).toBe(false);
+  });
   it("loads only after server reviewer authorization", async () => {
     const { service, authorized, read } = setup();
     expect(await service.load("reviewer")).toEqual({ authorized: true, rows: [row] });

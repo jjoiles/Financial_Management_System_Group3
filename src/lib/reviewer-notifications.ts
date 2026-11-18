@@ -16,6 +16,11 @@ export const REVIEWER_REASON_LABEL = {
   under_review: "Review required",
 } as const;
 
+/** Exact F10 rule: leadership alone is not a reviewer; MFA is mandatory. */
+export function hasF10ReviewerAccess(roles: readonly string[], assurance: string | null | undefined) {
+  return assurance === "aal2" && roles.some(role => role === "reviewer" || role === "admin");
+}
+
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function validRequestLink(value: unknown): string | undefined {
   return typeof value === "string" && uuidPattern.test(value) ? value : undefined;

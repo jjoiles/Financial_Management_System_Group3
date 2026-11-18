@@ -32,6 +32,9 @@ Verification limits: the existing Requester session returns no backend requests;
 
 # Issue #10 — F10
 
+- [x] Complete code-only exact-role/AAL2 remediation, stale-event handling, expanded review-only SQL tests, and non-destructive recovery documentation.
+- [x] Run the full suite and automatic checks; update the F10 report and commit without applying SQL or merging PR #205.
+
 - [x] Inspect submission, routing, F11 notifications, request access, and hosted reviewer availability.
 - [x] Obtain approval for application code/tests and unapplied SQL preparation only.
 - [x] Implement reviewer alert application code, secure links, read/unread states, and unavailable-table handling; prepare generation/RLS SQL outside executable migration folders.

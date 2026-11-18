@@ -2,16 +2,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./auth-context";
 import { reviewerNotificationClient } from "./reviewer-notification-client";
-import { createReviewerNotificationService, reviewerNotificationError, type ReviewerNotification } from "./reviewer-notifications";
+import { createReviewerNotificationService, hasF10ReviewerAccess, reviewerNotificationError, type ReviewerNotification } from "./reviewer-notifications";
 import { startRequestStatusChecks } from "./request-status-sync";
 
 const service = createReviewerNotificationService({
   async authorized(userId, signal) {
-    let query = supabase.rpc("is_admin_or_reviewer", { _user_id: userId });
+    // Existing RLS-protected own role rows: do not reuse the leadership-inclusive
+    // shared helper, auth-context mapped roles, or the presentation role switch.
+    let query = supabase.from("user_roles").select("role").eq("user_id", userId);
     if (signal) query = query.abortSignal(signal);
     const { data, error } = await query;
     if (error) throw error;
-    return data === true;
+    const assurance = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (assurance.error) throw assurance.error;
+    return hasF10ReviewerAccess((data ?? []).map(row => row.role), assurance.data?.currentLevel);
   },
   async read(userId, signal) {
     let query = reviewerNotificationClient.from("reviewer_notifications")
