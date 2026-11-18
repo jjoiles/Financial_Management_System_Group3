@@ -33,7 +33,8 @@ Verification limits: the existing Requester session returns no backend requests;
 # Issue #10 — F10
 
 - [x] Inspect available isolated test options and prepare the setup/production approval plan.
-- [ ] Create and verify an isolated test environment — waiting for setup approval; stop if a draft uses the live database.
+- [x] Create one F10 isolated verification draft; platform inventory confirms its own test database, ready and separate from live.
+- [ ] Confirm empty request/user inventories and source/target evidence inside the draft's own chat — blocked by current main-thread scope; no writes or testing authorized until next approval.
 
 - [x] Complete code-only exact-role/AAL2 remediation, stale-event handling, expanded review-only SQL tests, and non-destructive recovery documentation.
 - [x] Run the full suite and automatic checks; update the F10 report and commit without applying SQL or merging PR #205.
@@ -46,4 +47,4 @@ Verification limits: the existing Requester session returns no backend requests;
 - [ ] Enable persisted reviewer delivery — blocked pending separate explicit approval to apply reviewed SQL.
 - [ ] Verify real signed-in reviewer delivery/read/link/privacy — blocked by unapplied schema and no existing authorized reviewer; requester session unavailable this turn.
 
-Blockers: no reviewer/admin role records or named reviewer assignments exist; the hosted database is shared with production. Database SQL must remain unapplied pending separate explicit approval. No accounts, role assignments, existing records, permissions, or production configuration may change.
+Blockers: the current main thread still targets the shared production database. The created draft has its own test database according to platform inventory; direct empty-data and draft-source inspection must occur in its own chat. First-step approval permits creation/isolation verification only; no SQL, testing, accounts, roles, records, publishing, acceptance, or merge is authorized until the next approval.
