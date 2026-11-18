@@ -4,6 +4,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 import type { UserRole } from "@/lib/mock-data";
 import { withTransientRetry } from "@/lib/backend-errors";
+import { buildAuthRedirect, normalizeEmail } from "@/lib/auth-recovery";
+
+// Only rate limits surface; other resend/reset errors stay silent so responses never reveal account existence.
+const isRateLimited = (error: { code?: string; status?: number; message?: string }) =>
+  error.status === 429 || /rate limit/i.test(error.message ?? "") || (error.code ?? "").startsWith("over_");
 import { mapDatabaseRoleToPortalRole, retrieveSignedInUserRoles } from "@/lib/rbac";
 
 type Profile = {
@@ -30,6 +35,9 @@ type AuthContextType = {
     department: string,
   ) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  resendConfirmation: (email: string) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
   verifyMfa: (code: string) => Promise<void>;
   enrollTotp: () => Promise<{ factorId: string; qrCode: string; secret: string }>;
   verifyEnrollment: (factorId: string, code: string) => Promise<void>;
@@ -154,7 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await refreshMfaState();
       },
       signUp: async (email, password, displayName, department) => {
-        const { data, error } = await supabase.auth.signUp({
+        const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -163,13 +171,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
         if (error) throw error;
-        if (data.user) {
-          await supabase.from("profiles").insert({
-            user_id: data.user.id,
-            display_name: displayName,
-            department,
-          });
-        }
+        // Profile rows are created on first authenticated load (loadProfile); with
+        // email confirmation on there is no session yet, so no write is attempted here.
+      },
+      resendConfirmation: async (email) => {
+        const { error } = await supabase.auth.resend({
+          type: "signup",
+          email: normalizeEmail(email),
+          options: { emailRedirectTo: buildAuthRedirect(window.location.origin, "/") },
+        });
+        if (error && isRateLimited(error)) throw error;
+      },
+      requestPasswordReset: async (email) => {
+        const { error } = await supabase.auth.resetPasswordForEmail(normalizeEmail(email), {
+          redirectTo: buildAuthRedirect(window.location.origin, "/reset-password"),
+        });
+        if (error && isRateLimited(error)) throw error;
+      },
+      updatePassword: async (password) => {
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) throw error;
       },
       signInWithGoogle: async () => {
         const result = await lovable.auth.signInWithOAuth("google", {

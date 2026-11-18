@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as RequestsRouteImport } from './routes/requests'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SlaRouteImport } from './routes/sla'
 import { Route as SubmitRouteImport } from './routes/submit'
 import { Route as TrackingRouteImport } from './routes/tracking'
@@ -37,6 +38,11 @@ const RequestsRoute = RequestsRouteImport.update({
   path: '/requests',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SlaRoute = SlaRouteImport.update({
   id: '/sla',
   path: '/sla',
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AnalyticsRoute
   '/login': typeof LoginRoute
   '/requests': typeof RequestsRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/sla': typeof SlaRoute
   '/submit': typeof SubmitRoute
   '/tracking': typeof TrackingRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/analytics': typeof AnalyticsRoute
   '/login': typeof LoginRoute
   '/requests': typeof RequestsRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/sla': typeof SlaRoute
   '/submit': typeof SubmitRoute
   '/tracking': typeof TrackingRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/analytics': typeof AnalyticsRoute
   '/login': typeof LoginRoute
   '/requests': typeof RequestsRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/sla': typeof SlaRoute
   '/submit': typeof SubmitRoute
   '/tracking': typeof TrackingRoute
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/login'
     | '/requests'
+    | '/reset-password'
     | '/sla'
     | '/submit'
     | '/tracking'
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/login'
     | '/requests'
+    | '/reset-password'
     | '/sla'
     | '/submit'
     | '/tracking'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/login'
     | '/requests'
+    | '/reset-password'
     | '/sla'
     | '/submit'
     | '/tracking'
@@ -116,6 +128,7 @@ export interface RootRouteChildren {
   AnalyticsRoute: typeof AnalyticsRoute
   LoginRoute: typeof LoginRoute
   RequestsRoute: typeof RequestsRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   SlaRoute: typeof SlaRoute
   SubmitRoute: typeof SubmitRoute
   TrackingRoute: typeof TrackingRoute
@@ -151,6 +164,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RequestsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sla': {
       id: '/sla'
       path: '/sla'
@@ -180,6 +200,7 @@ const rootRouteChildren: RootRouteChildren = {
   AnalyticsRoute: AnalyticsRoute,
   LoginRoute: LoginRoute,
   RequestsRoute: RequestsRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   SlaRoute: SlaRoute,
   SubmitRoute: SubmitRoute,
   TrackingRoute: TrackingRoute,
