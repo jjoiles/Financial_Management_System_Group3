@@ -6,6 +6,11 @@ import RequestDetailDialog from "@/components/RequestDetailDialog";
 import { Search, Filter, Loader2, FileText } from "lucide-react";
 import type { FundingType, RequestStatus } from "@/lib/mock-data";
 import { formatCurrency } from "@/lib/format";
+import { filterRequests, sortRequests, REQUEST_SORT_OPTIONS, getRequestListState, type RequestSort } from "@/lib/request-list";
+import RequestReadNotice from "@/components/RequestReadNotice";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 
 export const Route = createFileRoute("/requests")({
   component: RequestsPage,
@@ -13,35 +18,27 @@ export const Route = createFileRoute("/requests")({
     meta: [
       { title: "All Requests — FinReq" },
       { name: "description", content: "View and manage all financial requests." },
+      { property: "og:title", content: "All Requests — FinReq" },
+      { property: "og:description", content: "Search, filter, sort, and review financial requests." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
 });
 
 function RequestsPage() {
-  const { data, loading, error, reload } = useFinancialRequests();
+  const { data, loading, readIssue, reload } = useFinancialRequests();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "">("");
   const [fundingFilter, setFundingFilter] = useState<FundingType | "">("");
+  const [sort, setSort] = useState<RequestSort>("newest");
   const [selected, setSelected] = useState<EnrichedRequest | null>(null);
 
   const filtered = useMemo(
-    () =>
-      data.filter((r) => {
-        const q = search.toLowerCase();
-        if (
-          q &&
-          !r.title.toLowerCase().includes(q) &&
-          !r.id.toLowerCase().includes(q) &&
-          !r.email.toLowerCase().includes(q) &&
-          !r.department.toLowerCase().includes(q)
-        )
-          return false;
-        if (statusFilter && r.status !== statusFilter) return false;
-        if (fundingFilter && r.fundingType !== fundingFilter) return false;
-        return true;
-      }),
-    [data, search, statusFilter, fundingFilter],
+    () => sortRequests(filterRequests(data, { search, status: statusFilter, funding: fundingFilter }), sort),
+    [data, search, statusFilter, fundingFilter, sort],
   );
+  const listState = getRequestListState(loading, filtered.length, readIssue);
 
   const pending = filtered.filter((r) => r.status === "Submitted" || r.status === "Under Review");
   const decided = filtered.filter(
@@ -58,27 +55,28 @@ function RequestsPage() {
             {search || statusFilter || fundingFilter ? "matched" : "total"}
           </p>
         </div>
-        <button
+        <Button variant="outline" size="sm" disabled={loading}
           onClick={() => reload()}
-          className="self-start rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent"
+          className="self-start"
         >
           Refresh
-        </button>
+        </Button>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+        <div className="relative min-w-0 flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
+          <Input aria-label="Search requests"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md border border-input bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            className="bg-background pl-9"
             placeholder="Search by ID, title, requester, department…"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Filter className="h-4 w-4 text-muted-foreground" />
           <select
+            aria-label="Filter by status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as RequestStatus | "")}
             className="rounded-md border border-input bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -91,6 +89,7 @@ function RequestsPage() {
             <option value="Completed">Completed</option>
           </select>
           <select
+            aria-label="Filter by funding"
             value={fundingFilter}
             onChange={(e) => setFundingFilter(e.target.value as FundingType | "")}
             className="rounded-md border border-input bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -100,20 +99,26 @@ function RequestsPage() {
             <option value="R">Research (R)</option>
             <option value="U">University (U)</option>
           </select>
+          <Select value={sort} onValueChange={(value) => setSort(value as RequestSort)}>
+            <SelectTrigger aria-label="Sort requests" className="w-[190px] bg-background text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {REQUEST_SORT_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      {error && (
-        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </p>
-      )}
+      <RequestReadNotice issue={readIssue} />
 
-      {loading ? (
+      {listState === "loading" ? (
         <div className="flex items-center justify-center rounded-2xl border border-border bg-card py-16 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading requests…
         </div>
-      ) : filtered.length === 0 ? (
+      ) : listState === "restricted" || listState === "unavailable" ? null : listState === "empty" ? (
         <EmptyState />
       ) : (
         <div className="space-y-6">

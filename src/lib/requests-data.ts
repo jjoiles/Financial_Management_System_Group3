@@ -11,6 +11,8 @@ import { readRoutingDecision, type RoutingDecision } from "@/lib/routing/engine"
 import { readRequestMetadata, type RequestMetadata } from "@/lib/request-utils";
 
 import { readPrototypeRequests as readPrototypeRequestStore } from "@/lib/prototype-store";
+import { classifyRequestReadError, selectVisibleRequests, type RequestReadIssue } from "@/lib/request-list";
+import { approvalStageClient } from "@/lib/approval-stage-client";
 
 type DbRow = {
   id: string;
@@ -83,6 +85,7 @@ export type EnrichedRequest = FinancialRequest & {
   metadata?: RequestMetadata | null;
   prototype: boolean;
   userId: string | null;
+  createdAt: string;
   activeStage: ActiveApprovalStage | null;
 };
 
@@ -101,6 +104,7 @@ const toEnriched = (
   amount: Number(row.amount),
   status: statusMap[row.status],
   submittedAt: (row.created_at ?? "").slice(0, 10),
+  createdAt: row.created_at ?? "",
   updatedAt: (row.updated_at ?? row.created_at ?? "").slice(0, 10),
   description: row.description,
   attachments:
@@ -122,10 +126,19 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
   const [data, setData] = useState<EnrichedRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [readIssue, setReadIssue] = useState<RequestReadIssue | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setReadIssue(null);
+    setData([]);
+
+    const reportReadError = (err: unknown) => {
+      const issue = classifyRequestReadError(err);
+      setError(issue.message);
+      setReadIssue(issue);
+    };
 
     try {
       let rows: DbRow[] | null = null;
@@ -139,13 +152,13 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
 
         if (res.error) {
           logger.error("requests.load_failed", { error: res.error });
-          setError(res.error.message);
+          reportReadError(res.error);
         } else {
           rows = res.data as DbRow[];
         }
       } catch (dbErr) {
         logger.error("requests.load_crashed", { error: dbErr });
-        setError(dbErr instanceof Error ? dbErr.message : "Failed to load requests");
+        reportReadError(dbErr);
       }
 
       // Load active SLA stages.
@@ -153,7 +166,7 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
       let activeStages: ActiveStageRow[] = [];
 
       try {
-        const stageResult = await supabase
+        const stageResult = await approvalStageClient
           .from("approval_stage_tracking")
           .select(
             "id, request_id, stage_order, queue_id, stage_name, started_at, deadline_at, duration_hours",
@@ -218,11 +231,7 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
 
       combined = [...combined, ...proto];
 
-      if (opts.onlyMine) {
-        combined = currentUserId
-          ? combined.filter((request) => request.userId === currentUserId)
-          : [];
-      }
+      combined = selectVisibleRequests(combined, currentUserId, !!opts.onlyMine);
 
       combined.sort((a, b) => (a.submittedAt < b.submittedAt ? 1 : -1));
 
@@ -230,7 +239,8 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
     } catch (err) {
       logger.error("requests.load_crashed", { error: err });
 
-      setError(err instanceof Error ? err.message : "Failed to load requests");
+      setData([]);
+      reportReadError(err);
     } finally {
       setLoading(false);
     }
@@ -240,7 +250,7 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
     void load();
   }, [load]);
 
-  return { data, loading, error, reload: load };
+  return { data, loading, error, readIssue, reload: load };
 }
 
 export const formatStatus = (status: RequestStatus) => status;
