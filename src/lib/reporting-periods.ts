@@ -47,6 +47,14 @@ import { FISCAL_QUARTERS, deriveFiscalPeriod, type FiscalQuarter } from "@/lib/r
  *   it never happens for invalid input, which returns null instead.
  * - Academic lookups throw an Error if the calendar data fails
  *   validateAcademicCalendar().
+ *
+ * Coverage (F18.2)
+ * - getAcademicCalendarCoverage() reports the span the academic calendar data
+ *   covers, and getAcademicCoverageStatus() tells a date outside that data
+ *   apart from a break between terms. Both require consecutive academic years.
+ * - The versioned, eagerly validated configuration lives in
+ *   reporting-period-config.ts, which imports this module. This module must
+ *   not import it back.
  */
 
 // ---------------------------------------------------------------------------
@@ -1036,4 +1044,135 @@ export function getAcademicTermForDate(
       (period): period is AcademicTermPeriod => period.granularity === "term",
     ) ?? null
   );
+}
+
+// ---------------------------------------------------------------------------
+// Academic calendar coverage (F18.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * The span of time the academic calendar data covers: from the first Fall
+ * term's start to the end of the last Summer term. Half-open, like every period.
+ */
+export interface AcademicCalendarCoverage extends PeriodBounds {
+  readonly timeZone: typeof ACADEMIC_TIME_ZONE;
+  /** Published local start date of the earliest term (YYYY-MM-DD), inclusive. */
+  readonly localStartDate: string;
+  /** Published local end date of the latest term (YYYY-MM-DD), inclusive. */
+  readonly localEndDate: string;
+  /** Earliest academic year in the data, e.g. "AY2025-2026". */
+  readonly firstAcademicYear: string;
+  /** Latest academic year in the data, e.g. "AY2026-2027". */
+  readonly lastAcademicYear: string;
+}
+
+export const ACADEMIC_COVERAGE_STATUSES = [
+  "invalid-date",
+  "before-coverage",
+  "in-term",
+  "between-terms",
+  "after-coverage",
+] as const;
+export type AcademicCoverageStatus = (typeof ACADEMIC_COVERAGE_STATUSES)[number];
+
+/**
+ * Coverage cached per period array. buildAcademicPeriods() reuses its array
+ * while a calendar is unchanged and returns a new one after a change, so this
+ * cache never serves coverage for an outdated calendar.
+ */
+const academicCoverageCache = new WeakMap<readonly AcademicPeriod[], AcademicCalendarCoverage>();
+
+function academicStartYear(academicYear: string): number {
+  return Number(ACADEMIC_YEAR_PATTERN.exec(academicYear)?.[1]);
+}
+
+/**
+ * The span of time covered by the academic calendar data.
+ *
+ * Computed chronologically from the term periods, so it does not depend on the
+ * order of years in the calendar array. Results are frozen and cached; see
+ * buildAcademicPeriods() for when a changed calendar is rebuilt.
+ *
+ * @throws Error if the calendar fails validateAcademicCalendar(), or if its
+ * academic years are not consecutive (e.g. AY2025-2026 then AY2027-2028).
+ * A missing year would otherwise look like a break between terms.
+ */
+export function getAcademicCalendarCoverage(
+  calendar: AcademicCalendar = HOWARD_ACADEMIC_CALENDAR,
+): AcademicCalendarCoverage {
+  return coverageForPeriods(buildAcademicPeriods(calendar));
+}
+
+/** Coverage for periods already built (and validated) by buildAcademicPeriods(). */
+function coverageForPeriods(periods: readonly AcademicPeriod[]): AcademicCalendarCoverage {
+  const cached = academicCoverageCache.get(periods);
+  if (cached) return cached;
+
+  // Validation guarantees at least one year, and every year has three terms.
+  const terms = periods.filter(
+    (period): period is AcademicTermPeriod => period.granularity === "term",
+  );
+  const first = terms.reduce((a, b) => (Date.parse(b.startUtc) < Date.parse(a.startUtc) ? b : a));
+  const last = terms.reduce((a, b) =>
+    Date.parse(b.endExclusiveUtc) > Date.parse(a.endExclusiveUtc) ? b : a,
+  );
+
+  const years = [...new Set(terms.map((term) => term.academicYear))].sort(
+    (a, b) => academicStartYear(a) - academicStartYear(b),
+  );
+  for (let i = 1; i < years.length; i += 1) {
+    const expectedStart = academicStartYear(years[i - 1]) + 1;
+    if (academicStartYear(years[i]) !== expectedStart) {
+      throw new Error(
+        `Academic calendar years must be consecutive: AY${expectedStart}-${expectedStart + 1} ` +
+          `is missing between ${years[i - 1]} and ${years[i]}`,
+      );
+    }
+  }
+
+  const coverage: AcademicCalendarCoverage = Object.freeze({
+    timeZone: ACADEMIC_TIME_ZONE,
+    startUtc: first.startUtc,
+    endExclusiveUtc: last.endExclusiveUtc,
+    localStartDate: first.localStartDate,
+    localEndDate: last.localEndDate,
+    firstAcademicYear: years[0],
+    lastAcademicYear: years[years.length - 1],
+  });
+  academicCoverageCache.set(periods, coverage);
+  return coverage;
+}
+
+/**
+ * Where an instant falls relative to the academic calendar data:
+ * - "invalid-date": the input is not a valid instant (see toValidInstant).
+ *   Never throws for invalid input.
+ * - "before-coverage" / "after-coverage": outside the data, so no academic
+ *   period can be known.
+ * - "in-term": inside a Fall, Spring or Summer term; exactly when
+ *   getAcademicTermForDate() returns a term.
+ * - "between-terms": inside the covered span but in a break between terms.
+ *
+ * Boundaries are half-open: the coverage start is covered, the exclusive end is not.
+ *
+ * @throws Error under the same conditions as getAcademicCalendarCoverage().
+ */
+export function getAcademicCoverageStatus(
+  input: ReportingInstantInput | null | undefined,
+  calendar: AcademicCalendar = HOWARD_ACADEMIC_CALENDAR,
+): AcademicCoverageStatus {
+  const instant = toValidInstant(input);
+  if (!instant) return "invalid-date";
+  // Build (and, for a calendar that is not frozen, change-check) the periods
+  // once per call; coverage and the term check both use the same periods.
+  const periods = buildAcademicPeriods(calendar);
+  const coverage = coverageForPeriods(periods);
+  const time = instant.getTime();
+  if (time < Date.parse(coverage.startUtc)) return "before-coverage";
+  if (time >= Date.parse(coverage.endExclusiveUtc)) return "after-coverage";
+  // Same rule as getAcademicTermForDate(): terms never overlap.
+  const inTerm = periods.some(
+    (period) => period.granularity === "term" && isWithinPeriod(period, instant),
+  );
+  return inTerm ? "in-term" : "between-terms";
 }

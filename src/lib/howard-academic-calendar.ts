@@ -1,3 +1,7 @@
+import { deepFreeze } from "@/lib/deep-freeze";
+// Type-only import: this module must stay data-only, with no runtime imports
+// from reporting-periods.ts, which imports this module (see
+// docs/F18_Reporting_Period_Configuration.md).
 import type { AcademicCalendar, AcademicCalendarSource } from "@/lib/reporting-periods";
 
 /**
@@ -22,19 +26,13 @@ import type { AcademicCalendar, AcademicCalendarSource } from "@/lib/reporting-p
  *   session start or latest session end.
  *
  * Only add dates that appear in an official Howard source, and cite only
- * sources that actually contain that year's dates. F18.2 will provide the
- * mechanism for maintaining this data; until then, calendar changes are code
- * changes reviewed like any other.
+ * sources that actually contain that year's dates.
+ *
+ * F18.2: this data is part of the versioned REPORTING_PERIOD_CONFIG in
+ * reporting-period-config.ts. Calendar changes are code changes reviewed like
+ * any other, and every change must bump REPORTING_PERIOD_CONFIG_VERSION.
+ * Follow docs/F18_Reporting_Period_Configuration.md to add or correct a year.
  */
-
-/** Recursively freezes calendar data so it cannot be changed at runtime. */
-function deepFreeze<T>(value: T): T {
-  if (value !== null && typeof value === "object") {
-    Object.values(value).forEach(deepFreeze);
-    Object.freeze(value);
-  }
-  return value;
-}
 
 /**
  * Contains AY2025-2026 only (Fall 2025, Spring 2026, Summer 2026).

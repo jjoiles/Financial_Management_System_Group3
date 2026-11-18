@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HOWARD_ACADEMIC_CALENDAR } from "./howard-academic-calendar";
 import {
+  ACADEMIC_COVERAGE_STATUSES,
   ACADEMIC_TIME_ZONE,
   buildAcademicPeriods,
   findAcademicPeriodsForDate,
   formatCalendarMonthKey,
+  getAcademicCalendarCoverage,
+  getAcademicCoverageStatus,
   getAcademicPeriodByKey,
   getAcademicTermForDate,
   getCalendarMonthForDate,
@@ -943,5 +946,156 @@ describe("academic calendar validation", () => {
 
   it("rejects an empty calendar", () => {
     expectCalendarError([], "calendar: at least one academic year is required");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Academic calendar coverage (F18.2)
+// ---------------------------------------------------------------------------
+
+describe("academic calendar coverage", () => {
+  it("spans the official calendar from the first Fall start to the last Summer end", () => {
+    expect(getAcademicCalendarCoverage()).toEqual({
+      timeZone: ACADEMIC_TIME_ZONE,
+      startUtc: "2025-08-18T04:00:00.000Z",
+      endExclusiveUtc: "2027-07-25T04:00:00.000Z",
+      localStartDate: "2025-08-18",
+      localEndDate: "2027-07-24",
+      firstAcademicYear: "AY2025-2026",
+      lastAcademicYear: "AY2026-2027",
+    });
+  });
+
+  it("is frozen and reused for the deeply frozen default calendar", () => {
+    const coverage = getAcademicCalendarCoverage();
+    expect(Object.isFrozen(coverage)).toBe(true);
+    expect(getAcademicCalendarCoverage(HOWARD_ACADEMIC_CALENDAR)).toBe(coverage);
+  });
+
+  it("does not depend on the order of years in the calendar array", () => {
+    expect(getAcademicCalendarCoverage([...HOWARD_ACADEMIC_CALENDAR].reverse())).toEqual(
+      getAcademicCalendarCoverage(),
+    );
+    expect(getAcademicCalendarCoverage([makeYear(2027), makeYear(2025), makeYear(2026)])).toEqual(
+      getAcademicCalendarCoverage([makeYear(2025), makeYear(2026), makeYear(2027)]),
+    );
+    expect(
+      getAcademicCalendarCoverage([makeYear(2027), makeYear(2025), makeYear(2026)]),
+    ).toMatchObject({
+      localStartDate: "2025-08-17",
+      localEndDate: "2028-07-24",
+      firstAcademicYear: "AY2025-2026",
+      lastAcademicYear: "AY2027-2028",
+    });
+  });
+
+  it("uses an explicit Summer end date and supports a single-year calendar", () => {
+    expect(getAcademicCalendarCoverage(FIXTURE)).toMatchObject({
+      startUtc: "2026-08-17T04:00:00.000Z",
+      endExclusiveUtc: "2027-08-01T04:00:00.000Z",
+      localStartDate: "2026-08-17",
+      localEndDate: "2027-07-31",
+      firstAcademicYear: "AY2026-2027",
+      lastAcademicYear: "AY2026-2027",
+    });
+  });
+
+  it("rejects calendars with a missing academic year between covered years", () => {
+    expect(() => getAcademicCalendarCoverage([makeYear(2025), makeYear(2027)])).toThrow(
+      "Academic calendar years must be consecutive: AY2026-2027 is missing between " +
+        "AY2025-2026 and AY2027-2028",
+    );
+  });
+
+  it("throws for an invalid calendar", () => {
+    expect(() => getAcademicCalendarCoverage([])).toThrow(
+      "Invalid academic calendar: calendar: at least one academic year is required",
+    );
+  });
+
+  it("recomputes after a non-frozen calendar is changed in place", () => {
+    const year = editableYear();
+    const calendar = [year] as AcademicCalendar;
+    const first = getAcademicCalendarCoverage(calendar);
+    expect(getAcademicCalendarCoverage(calendar)).toBe(first);
+
+    year.summer.endDate = "2027-08-10";
+    const second = getAcademicCalendarCoverage(calendar);
+    expect(second).not.toBe(first);
+    expect(second.localEndDate).toBe("2027-08-10");
+    expect(second.endExclusiveUtc).toBe("2027-08-11T04:00:00.000Z");
+  });
+});
+
+describe("academic coverage status", () => {
+  const start = "2025-08-18T04:00:00.000Z";
+  const endExclusive = "2027-07-25T04:00:00.000Z";
+
+  it("lists every status", () => {
+    expect(ACADEMIC_COVERAGE_STATUSES).toEqual([
+      "invalid-date",
+      "before-coverage",
+      "in-term",
+      "between-terms",
+      "after-coverage",
+    ]);
+  });
+
+  it("reports invalid input without throwing, even for an invalid calendar", () => {
+    for (const input of [
+      null,
+      undefined,
+      Number.NaN,
+      new Date(Number.NaN),
+      "2026-01-01",
+      "2026-01-01T00:00:00",
+    ]) {
+      expect(getAcademicCoverageStatus(input)).toBe("invalid-date");
+    }
+    expect(getAcademicCoverageStatus(null, [])).toBe("invalid-date");
+    expect(() => getAcademicCoverageStatus(start, [])).toThrow("Invalid academic calendar");
+  });
+
+  it("applies the half-open rule at both coverage edges", () => {
+    expect(getAcademicCoverageStatus(minus1ms(start))).toBe("before-coverage");
+    expect(getAcademicCoverageStatus(start)).toBe("in-term");
+    expect(getAcademicCoverageStatus(minus1ms(endExclusive))).toBe("in-term");
+    expect(getAcademicCoverageStatus(endExclusive)).toBe("after-coverage");
+    expect(getAcademicCoverageStatus("2028-01-15T12:00:00Z")).toBe("after-coverage");
+    expect(getAcademicCoverageStatus("2025-07-01T12:00:00Z")).toBe("before-coverage");
+  });
+
+  it("reports breaks inside the covered span as between terms", () => {
+    expect(getAcademicCoverageStatus("2025-12-20T12:00:00Z")).toBe("between-terms"); // winter break
+    expect(getAcademicCoverageStatus("2026-05-12T12:00:00Z")).toBe("between-terms"); // Spring to Summer
+    expect(getAcademicCoverageStatus("2026-08-01T12:00:00Z")).toBe("between-terms"); // Summer to Fall
+  });
+
+  it("uses Eastern time term edges", () => {
+    // Fall 2025 ends Tuesday December 16; the next local midnight is 05:00Z (EST).
+    expect(getAcademicCoverageStatus("2025-12-17T04:59:59.999Z")).toBe("in-term");
+    expect(getAcademicCoverageStatus("2025-12-17T05:00:00.000Z")).toBe("between-terms");
+  });
+
+  it("agrees with getAcademicTermForDate and the coverage bounds at every sampled instant", () => {
+    const step = 6 * 60 * 60 * 1000;
+    for (let t = ms("2025-07-01T00:00:00Z"); t < ms("2027-09-01T00:00:00Z"); t += step) {
+      const status = getAcademicCoverageStatus(t);
+      const expected =
+        t < ms(start)
+          ? "before-coverage"
+          : t >= ms(endExclusive)
+            ? "after-coverage"
+            : getAcademicTermForDate(t)
+              ? "in-term"
+              : "between-terms";
+      expect(status, new Date(t).toISOString()).toBe(expected);
+    }
+  });
+
+  it("uses the calendar that is passed", () => {
+    expect(getAcademicCoverageStatus("2025-10-01T12:00:00Z", FIXTURE)).toBe("before-coverage");
+    expect(getAcademicCoverageStatus("2027-07-28T12:00:00Z", FIXTURE)).toBe("in-term");
+    expect(getAcademicCoverageStatus("2027-07-28T12:00:00Z")).toBe("after-coverage");
   });
 });
