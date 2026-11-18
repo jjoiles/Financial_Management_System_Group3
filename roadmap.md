@@ -29,3 +29,13 @@ Verification limits: the existing Requester session returns no backend requests;
 - [x] Add identity-scoped automatic tracking checks without database changes; user approved the polling alternative.
 - [x] Test status refresh, cleanup, errors, reconnection, authorization, and preserved list behavior.
 - [x] Verify preview and automatic checks; document limitations and commit on the F9 branch without merging.
+
+# Issue #10 — F10
+
+- [x] Inspect submission, routing, F11 notifications, request access, and hosted reviewer availability.
+- [ ] Obtain approval for the F10 plan and the explicitly scoped shared-database change.
+- [ ] Implement persisted private reviewer alerts, duplicate prevention, secure request links, and read/unread states.
+- [ ] Add focused and database integration tests; run the full suite and verify automatic checks.
+- [ ] Write the F10 verification report and commit on the current feature branch without merging.
+
+Blockers: no reviewer/admin role records or named reviewer assignments exist; the hosted database is shared with production. No database, permission, configuration, account, or role changes are authorized yet.
