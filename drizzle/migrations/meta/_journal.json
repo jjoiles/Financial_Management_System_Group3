@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1794977880135,
+      "tag": "0000_f12_restore_self_scoped_authorization_helpers",
+      "breakpoints": true
+    }
+  ]
+}

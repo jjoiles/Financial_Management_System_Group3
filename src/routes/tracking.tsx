@@ -10,6 +10,8 @@ import StatusFilterChips, { type StatusFilter } from "@/components/tracking/Stat
 import RequestCountSummary from "@/components/tracking/RequestCountSummary";
 import { FileText, Loader2, Plus, SearchX } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
+import { filterRequests, getRequestListState } from "@/lib/request-list";
+import RequestReadNotice from "@/components/RequestReadNotice";
 
 export const Route = createFileRoute("/tracking")({
   component: TrackingPage,
@@ -17,13 +19,17 @@ export const Route = createFileRoute("/tracking")({
     meta: [
       { title: "My Requests — FinReq" },
       { name: "description", content: "Track status of your financial requests." },
+      { property: "og:title", content: "My Requests — FinReq" },
+      { property: "og:description", content: "Search your requests and follow their workflow status." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
 });
 
 function TrackingPage() {
   const auth = useAuth();
-  const { data, loading, reload } = useFinancialRequests();
+  const { data, loading, readIssue, reload } = useFinancialRequests({ onlyMine: true });
   const [selected, setSelected] = useState<EnrichedRequest | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
@@ -34,7 +40,7 @@ function TrackingPage() {
         if (!auth.user) return false;
         // Local prototype rows: only show ones saved by this signed-in user.
         if (r.prototype) return r.userId === auth.user.id;
-        return r.userId === auth.user.id || r.email === auth.user.email;
+        return r.userId === auth.user.id;
       }),
     [data, auth.user],
   );
@@ -52,14 +58,11 @@ function TrackingPage() {
     return counts;
   }, [myRequests]);
 
-  const filteredRequests = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return myRequests.filter((r) => {
-      if (statusFilter !== "All" && r.status !== statusFilter) return false;
-      if (!query) return true;
-      return r.title.toLowerCase().includes(query) || r.id.toLowerCase().includes(query);
-    });
-  }, [myRequests, search, statusFilter]);
+  const filteredRequests = useMemo(
+    () => filterRequests(myRequests, { search, status: statusFilter, scope: "tracking" }),
+    [myRequests, search, statusFilter],
+  );
+  const listState = getRequestListState(loading, filteredRequests.length, readIssue);
 
   const isFiltered = search.trim() !== "" || statusFilter !== "All";
   const prototypeCount = filteredRequests.filter((r) => r.prototype).length;
@@ -107,11 +110,13 @@ function TrackingPage() {
         </div>
       )}
 
-      {loading ? (
+      <RequestReadNotice issue={readIssue} />
+
+      {listState === "loading" ? (
         <div className="flex items-center justify-center rounded-2xl border border-border bg-card py-16 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
         </div>
-      ) : myRequests.length === 0 ? (
+      ) : listState === "restricted" || listState === "unavailable" ? null : myRequests.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card py-20 shadow-sm">
           <FileText className="mb-3 h-10 w-10 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">You haven't submitted any requests yet.</p>
