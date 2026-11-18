@@ -20,6 +20,10 @@ export const Route = createFileRoute("/sla")({
         name: "description",
         content: "Monitor financial request approval deadlines and SLA performance.",
       },
+      { property: "og:title", content: "SLA Dashboard — FinReq" },
+      { property: "og:description", content: "Monitor financial request approval deadlines and SLA performance." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
 });

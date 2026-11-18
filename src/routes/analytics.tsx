@@ -38,6 +38,10 @@ export const Route = createFileRoute("/analytics")({
     meta: [
       { title: "Analytics — FinReq" },
       { name: "description", content: "Financial request analytics and insights dashboard." },
+      { property: "og:title", content: "Analytics — FinReq" },
+      { property: "og:description", content: "Financial request analytics and insights dashboard." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
 });
