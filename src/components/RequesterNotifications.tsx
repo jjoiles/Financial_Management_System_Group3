@@ -5,14 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useRequesterNotifications } from "@/lib/requester-notifications-data";
 import { notificationStatusLabel } from "@/lib/requester-notifications";
+import { useReviewerNotifications } from "@/lib/reviewer-notifications-data";
+import ReviewerNotificationItems from "./ReviewerNotificationItems";
 
 export default function RequesterNotifications() {
   const [open, setOpen] = useState(false);
   const [marking, setMarking] = useState<string | null>(null);
   const { notifications, loading, error, reload, markRead } = useRequesterNotifications();
-  const unread = notifications.filter(row => !row.read_at).length;
+  const reviewer = useReviewerNotifications();
+  const unread = notifications.filter(row => !row.read_at).length + reviewer.notifications.filter(row => !row.read_at).length;
   return (
-    <Popover open={open} onOpenChange={value => { setOpen(value); if (value) void reload(); }}>
+    <Popover open={open} onOpenChange={value => { setOpen(value); if (value) { void reload(); void reviewer.reload(); } }}>
       <PopoverTrigger asChild>
         <Button variant="outline" size="icon" className="relative shrink-0" aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`} title="Notifications">
           <Bell className="text-muted-foreground" />
@@ -22,7 +25,7 @@ export default function RequesterNotifications() {
       <PopoverContent align="end" className="w-80 max-w-[calc(100vw-2rem)] p-0" aria-label="Requester notifications">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold">Notifications</h2>
-          <Button variant="ghost" size="icon" title="Refresh notifications" aria-label="Refresh notifications" disabled={loading} onClick={() => void reload()}><RefreshCw /></Button>
+          <Button variant="ghost" size="icon" title="Refresh notifications" aria-label="Refresh notifications" disabled={loading || reviewer.loading} onClick={() => { void reload(); void reviewer.reload(); }}><RefreshCw /></Button>
         </div>
         <div className="max-h-80 overflow-y-auto">
           {loading && <p role="status" className="flex items-center gap-2 p-4 text-xs text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading notifications…</p>}
@@ -42,6 +45,8 @@ export default function RequesterNotifications() {
               }}>{marking === row.id ? <Loader2 className="animate-spin" /> : <Check />}</Button>}
             </div>
           ))}
+          <ReviewerNotificationItems rows={reviewer.notifications} loading={reviewer.loading}
+            authorized={reviewer.authorized} error={reviewer.error} setRead={reviewer.setRead} close={() => setOpen(false)} />
         </div>
       </PopoverContent>
     </Popover>

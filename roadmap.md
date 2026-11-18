@@ -29,3 +29,22 @@ Verification limits: the existing Requester session returns no backend requests;
 - [x] Add identity-scoped automatic tracking checks without database changes; user approved the polling alternative.
 - [x] Test status refresh, cleanup, errors, reconnection, authorization, and preserved list behavior.
 - [x] Verify preview and automatic checks; document limitations and commit on the F9 branch without merging.
+
+# Issue #10 — F10
+
+- [x] Inspect available isolated test options and prepare the setup/production approval plan.
+- [x] Create one F10 isolated verification draft; platform inventory confirms its own test database, ready and separate from live.
+- [ ] Confirm empty request/user inventories and source/target evidence inside the draft's own chat — blocked by current main-thread scope; no writes or testing authorized until next approval.
+
+- [x] Complete code-only exact-role/AAL2 remediation, stale-event handling, expanded review-only SQL tests, and non-destructive recovery documentation.
+- [x] Run the full suite and automatic checks; update the F10 report and commit without applying SQL or merging PR #205.
+
+- [x] Inspect submission, routing, F11 notifications, request access, and hosted reviewer availability.
+- [x] Obtain approval for application code/tests and unapplied SQL preparation only.
+- [x] Implement reviewer alert application code, secure links, read/unread states, and unavailable-table handling; prepare generation/RLS SQL outside executable migration folders.
+- [x] Run focused and full automated tests and inspect automatic checks; do not execute database integration changes.
+- [x] Write the F10 verification report and commit on the current feature branch without merging.
+- [ ] Enable persisted reviewer delivery — blocked pending separate explicit approval to apply reviewed SQL.
+- [ ] Verify real signed-in reviewer delivery/read/link/privacy — blocked by unapplied schema and no existing authorized reviewer; requester session unavailable this turn.
+
+Blockers: the current main thread still targets the shared production database. The created draft has its own test database according to platform inventory; direct empty-data and draft-source inspection must occur in its own chat. First-step approval permits creation/isolation verification only; no SQL, testing, accounts, roles, records, publishing, acceptance, or merge is authorized until the next approval.
