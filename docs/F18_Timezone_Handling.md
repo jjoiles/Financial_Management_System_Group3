@@ -12,12 +12,12 @@ It does **not** change any F18.1 or F18.2 behavior: every reporting period, cove
 
 Out of scope:
 
-| Topic                                                 | Where it belongs                 |
-| ----------------------------------------------------- | -------------------------------- |
-| Filtering requests by period, including custom ranges | F18.4                            |
-| Choosing the zone for F18.4 custom date ranges        | F18.4 (deliberately not decided) |
-| Moving existing UI components to `formatInstant()`    | Not part of F18.3                |
-| Existing date bugs outside F18 (section 7)            | Separate issues                  |
+| Topic                                                 | Where it belongs                                   |
+| ----------------------------------------------------- | -------------------------------------------------- |
+| Filtering requests by period, including custom ranges | F18.4                                              |
+| Choosing the zone for F18.4 custom date ranges        | F18.4 (decided: `America/New_York`, see section 2) |
+| Moving existing UI components to `formatInstant()`    | Not part of F18.3                                  |
+| Existing date bugs outside F18 (section 7)            | Separate issues                                    |
 
 ## 2. Policy
 
@@ -38,6 +38,8 @@ There are three separate concerns. Each has one rule.
 | `academic`       | `America/New_York` | Howard publishes its academic calendar as local dates in Eastern time (`INSTITUTION_TIME_ZONE`). |
 
 The map **describes** existing behavior; fiscal and calendar-month code still computes from UTC fields, and tests check that every fiscal and month boundary is a UTC midnight and every academic boundary is an Eastern midnight.
+
+**Custom date ranges (F18.4):** use the fixed institutional zone, `America/New_York` (`CUSTOM_DATE_RANGE_TIME_ZONE` in `src/lib/date-range-filter.ts`, equal to `INSTITUTION_TIME_ZONE`). Users do not choose a zone, and the viewer's zone never affects which rows match. A custom range is not a reporting-period kind, so it is not part of `REPORTING_PERIOD_TIME_ZONES`. See [F18_Cross_Period_Filtering.md](F18_Cross_Period_Filtering.md).
 
 Because the zones differ, the same instant can fall in different periods. For example, 9 pm Eastern on August 31 is in the September calendar month (UTC) but still in August for the academic calendar.
 
@@ -85,7 +87,7 @@ Every new function takes an explicit zone. Only `zonedLocalMidnightToUtc` keeps 
 
 ### Rules for callers
 
-- **Filtering** (F18.4 and later): use period bounds from `reporting-periods.ts`, or `localDateRangeToUtcBounds()` with a zone from `REPORTING_PERIOD_TIME_ZONES`. Never pass `resolveViewerTimeZone()` into anything that decides which rows match.
+- **Filtering** (F18.4 and later): use period bounds from `reporting-periods.ts`, or `localDateRangeToUtcBounds()` with a zone from `REPORTING_PERIOD_TIME_ZONES`. For custom date ranges, use `validateCustomDateRange()` with `CUSTOM_DATE_RANGE_TIME_ZONE`, and filter with `filterByPeriod()` (both in `date-range-filter.ts`). Never pass `resolveViewerTimeZone()` into anything that decides which rows match.
 - **Instants**: pass a request's full `createdAt` timestamp, never the date-only `submittedAt`, which `toValidInstant` rejects.
 - **Display**: call `resolveViewerTimeZone()` in the browser. On the server (Cloudflare Workers) the runtime zone is usually `UTC`, so a server render would show UTC times.
 - **Zone names**: Intl also accepts case variants, legacy links (`US/Eastern`) and fixed offsets (`+05:00`). `"EST"` is a fixed UTC−5 zone **without** daylight saving time; use `America/New_York` for Eastern time. The runtime may report a legacy ID for the viewer's zone (e.g. `Asia/Calcutta` for `Asia/Kolkata`); both are valid.
@@ -133,5 +135,5 @@ These use time zones inconsistently but belong to other features. F18.3 document
 ## 8. Known limitations
 
 - The policy is fixed in code. There is no per-user or administrator zone setting, by design: filtering must not depend on the viewer.
-- The zone for F18.4 custom date ranges is not decided yet; `localDateRangeToUtcBounds()` requires it explicitly so the decision cannot be skipped.
+- F18.4 custom date ranges use the fixed institutional zone, `America/New_York` (section 2). `localDateRangeToUtcBounds()` and `validateCustomDateRange()` still require the zone explicitly, so no caller can inherit a different one by default.
 - Time zone rules come from the runtime's IANA data (ICU). A future rule change by a government takes effect when browsers and Node update their data.
