@@ -11,6 +11,7 @@ import RequestReadNotice from "@/components/RequestReadNotice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import RequestExportAction from "@/components/RequestExportAction";
 
 export const Route = createFileRoute("/requests")({
   component: RequestsPage,
@@ -44,6 +45,9 @@ function RequestsPage() {
   const decided = filtered.filter(
     (r) => r.status === "Approved" || r.status === "Rejected" || r.status === "Completed",
   );
+  // The page displays Pending first, then Decided, each in the selected F12
+  // order. Export those exact rows in that same displayed order.
+  const visibleRows = [...pending, ...decided];
 
   return (
     <div className="space-y-5">
@@ -55,12 +59,15 @@ function RequestsPage() {
             {search || statusFilter || fundingFilter ? "matched" : "total"}
           </p>
         </div>
+        <div className="flex flex-wrap items-start gap-3 sm:justify-end">
         <Button variant="outline" size="sm" disabled={loading}
           onClick={() => reload()}
           className="self-start"
         >
           Refresh
         </Button>
+        <RequestExportAction rows={visibleRows} loading={loading} readIssue={readIssue} />
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
