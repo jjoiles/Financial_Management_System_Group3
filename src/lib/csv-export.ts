@@ -47,15 +47,14 @@ export function buildFinancialReportCsv(requests: readonly ExportableRequest[]):
 
 export type RequestListExportRow = Pick<FinancialRequest,
   "id" | "title" | "requester" | "department" | "amount" | "fundingType" | "status" | "submittedAt"
-> & { createdAt?: string; prototype: boolean };
+> & { createdAt?: string };
 
 /** Explicit field allowlist; input order is preserved, including section order. */
 export function buildRequestListCsv(requests: readonly RequestListExportRow[]): string {
-  const headers = ["Request ID", "Title", "Requester", "Department", "Amount", "Funding Source", "Status", "Creation Date", "Storage"];
+  const headers = ["Request ID", "Title", "Requester", "Department", "Amount", "Funding Source", "Status", "Creation Date"];
   const rows = requests.map(request => [
     request.id, request.title, request.requester, request.department, request.amount,
     request.fundingType, request.status, request.createdAt || request.submittedAt,
-    request.prototype ? "Prototype - local only" : "Backend",
   ].map(escapeCsvCell).join(","));
   return [headers.map(escapeCsvCell).join(","), ...rows].join("\r\n");
 }

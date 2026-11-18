@@ -62,12 +62,12 @@ logger.error("attachment.upload_failed", { requestId, fileName, error });
 |---|---|
 | `request.submitted` | successful submit |
 | `request.rejected_by_database` | F22 database gateway rejected the row |
-| `request.insert_failed_prototype_fallback` | backend unavailable, saved locally |
+| `request.insert_failed` | insert failed; user sees an error (no local fallback since #127) |
 | `request.submit_failed` | unexpected submit error |
 | `attachment.upload_failed`, `attachment.link_failed`, `attachment.storage_unavailable` | attachment steps |
 | `workflow.started`, `workflow.start_failed`, `workflow.call_failed` | F7 call from the browser |
 | `workflow.initialized`, `workflow.flow_rejected`, `workflow.event_write_failed` | F7 server function |
-| `requests.load_failed`, `requests.load_crashed`, `prototype_store.corrupt` | request list loading |
+| `requests.load_failed`, `requests.load_crashed` | request list loading |
 | `activity.load_failed` | activity list |
 
 ### 3. Activity list
@@ -96,4 +96,4 @@ The request detail dialog now has an **Activity** section showing every event fo
 2. Submit a request with one attachment. Open it from **My Requests**. Activity shows *Request … created*, *Attached …*, and the F7 workflow event.
 3. In the SQL editor, run `UPDATE financial_requests SET status = 'under_review' WHERE request_number = '<id>';`. Reopen the dialog: *Status changed from submitted to under_review.*
 4. Change amount the same way: *Updated amount.* with from/to in metadata.
-5. Open devtools, turn off the network, submit. The console shows `[finreq] request.insert_failed_prototype_fallback` with the error.
+5. Open devtools, turn off the network, submit. The form shows an error and the console shows `[finreq] request.insert_failed` with the error.

@@ -1,16 +1,13 @@
 /**
- * One-line summary of how many requests match the current search/filter,
- * including how many are locally saved prototype records.
+ * One-line summary of how many requests match the current search/filter.
  */
 export default function RequestCountSummary({
   matching,
   total,
-  prototypeCount,
   isFiltered,
 }: {
   matching: number;
   total: number;
-  prototypeCount: number;
   isFiltered: boolean;
 }) {
   return (
@@ -24,12 +21,6 @@ export default function RequestCountSummary({
         <>
           <span className="font-semibold text-foreground">{total}</span> request
           {total === 1 ? "" : "s"} total
-        </>
-      )}
-      {prototypeCount > 0 && (
-        <>
-          {" · "}
-          <span className="font-medium text-warning">{prototypeCount} saved locally on this device only</span>
         </>
       )}
     </p>

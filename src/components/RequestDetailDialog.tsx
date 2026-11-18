@@ -59,7 +59,6 @@ export default function RequestDetailDialog({
 
   const canDecide =
     !!request &&
-    !request.prototype &&
     canReview &&
     !!request.activeStage &&
     (request.status === "Submitted" || request.status === "Under Review");
@@ -148,12 +147,6 @@ export default function RequestDetailDialog({
 
             <div className="mt-2 flex items-center gap-2">
               <StatusBadge status={request.status} />
-
-              {request.prototype && (
-                <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning">
-                  Prototype
-                </span>
-              )}
             </div>
           </div>
 
@@ -399,10 +392,10 @@ export default function RequestDetailDialog({
           )}
 
           {/* Linked Records */}
-          {!request.prototype && <LinkedRecords requestId={request.uuid} />}
+          <LinkedRecords requestId={request.uuid} />
 
           {/* Activity Log */}
-          {!request.prototype && <ActivityLog requestId={request.uuid} />}
+          <ActivityLog requestId={request.uuid} />
         </div>
       </div>
     </div>

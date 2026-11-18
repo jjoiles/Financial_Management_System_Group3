@@ -7,23 +7,23 @@ const context: RequestExportContext = { userId: "self", loading: false, needsMfa
 const row = {
   id: "FR-2026-A", title: 'Lab, "equipment"\nGrant', requester: "Ada", email: "ada@howard.edu",
   department: "Math", amount: 100.25, fundingType: "R" as const, status: "Submitted" as const,
-  submittedAt: "2026-11-18", createdAt: "2026-11-18T12:30:00Z", prototype: false, userId: "self",
+  submittedAt: "2026-11-18", createdAt: "2026-11-18T12:30:00Z", userId: "self",
 };
 
 describe("F23 request export", () => {
   it("includes the approved fields and escaped values without unrelated private fields", () => {
     const csv = buildRequestListCsv([{ ...row, description: "not exported", access_token: "not exported either" } as typeof row]);
-    expect(csv).toContain('"Request ID","Title","Requester","Department","Amount","Funding Source","Status","Creation Date","Storage"');
+    expect(csv).toContain('"Request ID","Title","Requester","Department","Amount","Funding Source","Status","Creation Date"');
     expect(csv).toContain('"Lab, ""equipment""\nGrant"');
-    expect(csv).toContain('"100.25","R","Submitted","2026-11-18T12:30:00Z","Backend"');
+    expect(csv).toContain('"100.25","R","Submitted","2026-11-18T12:30:00Z"');
     expect(csv).not.toContain("not exported");
   });
   it("preserves Unicode and neutralizes formula injection in titles", () => {
     expect(buildRequestListCsv([{ ...row, title: "Équipement 数学" }])).toContain("Équipement 数学");
     expect(buildRequestListCsv([{ ...row, title: "=HYPERLINK(1)" }])).toContain('"\'=HYPERLINK(1)"');
   });
-  it("labels prototype storage and falls back to the submission date", () => {
-    expect(buildRequestListCsv([{ ...row, prototype: true, createdAt: undefined }])).toContain('"2026-11-18","Prototype - local only"');
+  it("falls back to the submission date", () => {
+    expect(buildRequestListCsv([{ ...row, createdAt: undefined }])).toContain('"2026-11-18"');
   });
   it("uses CRLF and preserves passed row order", () => {
     const file = prepareRequestExport([{ ...row, id: "second" }, { ...row, id: "first" }], context, new Date("2026-11-18T05:00:00Z"));
@@ -48,17 +48,14 @@ describe("F23 request export", () => {
     expect(buildRequestListCsv([]).split("\r\n")).toHaveLength(1);
     expect(() => prepareRequestExport([], context)).toThrow("No matching requests");
   });
-  it.each([{ code: "42501" }, { status: 403 }, { status: 401 }])("blocks denied reads even when local rows are present: %j", error => {
-    expect(() => prepareRequestExport([{ ...row, prototype: true }], { ...context, readIssue: classifyRequestReadError(error) })).toThrow("Access restricted");
+  it.each([{ code: "42501" }, { status: 403 }, { status: 401 }])("blocks denied reads even when rows are present: %j", error => {
+    expect(() => prepareRequestExport([{ ...row }], { ...context, readIssue: classifyRequestReadError(error) })).toThrow("Access restricted");
   });
   it("blocks unavailable data, loading, sign-out, and incomplete verification", () => {
     for (const blocked of [{ ...context, readIssue: classifyRequestReadError(new Error("Failed to fetch")) }, { ...context, loading: true }, { ...context, userId: undefined }, { ...context, needsMfa: true }]) {
       expect(requestExportBlockReason(blocked, 1)).not.toBeNull();
       expect(() => prepareRequestExport([row], blocked)).toThrow();
     }
-  });
-  it("rejects another user's local row rather than silently exporting a subset", () => {
-    expect(() => prepareRequestExport([{ ...row, prototype: true, userId: "other" }], context)).toThrow("Access restricted");
   });
   it("reports malformed numeric data instead of creating an invalid file", () => {
     expect(() => prepareRequestExport([{ ...row, amount: Infinity }], context)).toThrow(RangeError);
