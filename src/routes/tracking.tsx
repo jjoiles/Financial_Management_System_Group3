@@ -33,7 +33,7 @@ export const Route = createFileRoute("/tracking")({
 
 function TrackingPage() {
   const auth = useAuth();
-  const { data, loading, readIssue, reload } = useFinancialRequests({ onlyMine: true });
+  const { data, loading, readIssue, reload, syncState } = useFinancialRequests({ onlyMine: true, automatic: true });
   const [selected, setSelected] = useState<EnrichedRequest | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
@@ -81,6 +81,9 @@ function TrackingPage() {
 
   const isFiltered = search.trim() !== "" || statusFilter !== "All";
   const prototypeCount = filteredRequests.filter((r) => r.prototype).length;
+  // Always read the open detail from the latest authorized rows, not a stale snapshot.
+  const currentSelection = !readIssue && auth.user && !auth.needsMfa
+    ? myRequests.find(row => row.uuid === selected?.uuid) ?? null : null;
 
   const pending = filteredRequests.filter(
     (r) => r.status === "Submitted" || r.status === "Under Review",
@@ -105,6 +108,14 @@ function TrackingPage() {
           <Plus className="h-4 w-4" /> New Request
         </Link>
       </div>
+
+      <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
+        {syncState === "offline" ? "Offline — displayed statuses may be out of date."
+          : syncState === "error" ? "Status checks failed — retrying automatically."
+          : syncState === "checking" ? "Checking request statuses…"
+          : syncState === "paused" ? "Status checks paused."
+          : "Statuses up to date"}
+      </p>
 
       {!loading && (
         <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
@@ -178,7 +189,7 @@ function TrackingPage() {
       )}
 
       <RequestDetailDialog
-        request={selected}
+        request={currentSelection}
         onClose={() => setSelected(null)}
         onDecisionRecorded={async () => {
           setSelected(null);

@@ -22,3 +22,10 @@ Verification limits: the existing Requester session returns no backend requests;
 - [x] Add focused service tests and rollback-only database integration assertions.
 - [x] Verify existing Requester submission/alert/link/read flow, automatic checks, and documentation; commit on the F11 branch.
 - [ ] Execute full database UPDATE/failure-injection integration suite — blocked by sandbox UPDATE/ALTER/SET ROLE privileges; do not elevate.
+
+# Issue #9 — F9
+
+- [x] Inspect status persistence, access, F11, F12, F23, and live-update publication availability.
+- [x] Add identity-scoped automatic tracking checks without database changes; user approved the polling alternative.
+- [x] Test status refresh, cleanup, errors, reconnection, authorization, and preserved list behavior.
+- [x] Verify preview and automatic checks; document limitations and commit on the F9 branch without merging.

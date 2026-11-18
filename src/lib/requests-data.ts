@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { supabase } from "@/integrations/supabase/client";
 
@@ -13,6 +13,8 @@ import { readRequestMetadata, type RequestMetadata } from "@/lib/request-utils";
 import { readPrototypeRequests as readPrototypeRequestStore } from "@/lib/prototype-store";
 import { classifyRequestReadError, selectVisibleRequests, type RequestReadIssue } from "@/lib/request-list";
 import { approvalStageClient } from "@/lib/approval-stage-client";
+import { useAuth } from "@/lib/auth-context";
+import { startRequestStatusChecks, type StatusSyncState } from "@/lib/request-status-sync";
 
 type DbRow = {
   id: string;
@@ -122,19 +124,30 @@ const toEnriched = (
 
 export const readPrototypeRequests = (): DbRow[] => readPrototypeRequestStore<DbRow>();
 
-export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
+export function useFinancialRequests(opts: { onlyMine?: boolean; automatic?: boolean } = {}) {
+  const { user, needsMfa } = useAuth();
+  const userId = user?.id;
+  const generation = useRef(0);
+  const activeRead = useRef<AbortController | null>(null);
+  const [owner, setOwner] = useState<string | undefined>();
+  const [syncState, setSyncState] = useState<StatusSyncState>("checking");
   const [data, setData] = useState<EnrichedRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [readIssue, setReadIssue] = useState<RequestReadIssue | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setReadIssue(null);
-    setData([]);
+  const load = useCallback(async (background = false): Promise<boolean> => {
+    if (!userId || needsMfa) return false;
+    const version = ++generation.current;
+    activeRead.current?.abort();
+    const controller = new AbortController();
+    activeRead.current = controller;
+    const current = () => version === generation.current && !controller.signal.aborted;
+    let successful = false;
+    if (!background) setLoading(true);
 
     const reportReadError = (err: unknown) => {
+      if (!current()) return;
       const issue = classifyRequestReadError(err);
       setError(issue.message);
       setReadIssue(issue);
@@ -145,21 +158,27 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
 
       // Load financial requests.
       try {
-        const res = await supabase
+        let query = supabase
           .from("financial_requests")
-          .select("*, request_attachments(count)")
-          .order("created_at", { ascending: false });
+          .select("*, request_attachments(count)");
+        if (opts.onlyMine) query = query.eq("user_id", userId);
+        const res = await query.order("created_at", { ascending: false }).abortSignal(controller.signal);
+
+        if (!current()) return false;
 
         if (res.error) {
           logger.error("requests.load_failed", { error: res.error });
           reportReadError(res.error);
         } else {
           rows = res.data as DbRow[];
+          successful = true;
         }
       } catch (dbErr) {
         logger.error("requests.load_crashed", { error: dbErr });
         reportReadError(dbErr);
       }
+
+      if (!current()) return false;
 
       // Load active SLA stages.
       // RLS limits the returned stages to requests the user may view.
@@ -201,14 +220,6 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
         });
       }
 
-      let currentUserId: string | undefined;
-
-      try {
-        currentUserId = (await supabase.auth.getSession()).data.session?.user.id;
-      } catch {
-        currentUserId = undefined;
-      }
-
       const safeMap = (row: DbRow): EnrichedRequest[] => {
         try {
           const activeStage = activeStageByRequestId.get(row.id) ?? null;
@@ -231,26 +242,57 @@ export function useFinancialRequests(opts: { onlyMine?: boolean } = {}) {
 
       combined = [...combined, ...proto];
 
-      combined = selectVisibleRequests(combined, currentUserId, !!opts.onlyMine);
+      combined = selectVisibleRequests(combined, userId, !!opts.onlyMine);
 
       combined.sort((a, b) => (a.submittedAt < b.submittedAt ? 1 : -1));
 
-      setData(combined);
+      if (current()) {
+        setOwner(userId);
+        setData(combined);
+        if (successful) { setError(null); setReadIssue(null); }
+      }
     } catch (err) {
       logger.error("requests.load_crashed", { error: err });
 
-      setData([]);
+      if (current()) setData([]);
       reportReadError(err);
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
-  }, [opts.onlyMine]);
+    return successful && current();
+  }, [opts.onlyMine, userId, needsMfa]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    generation.current += 1;
+    setOwner(userId);
+    setData([]);
+    setError(null);
+    setReadIssue(null);
+    setLoading(!!userId && !needsMfa);
+    if (!userId || needsMfa) return;
+    let first = true;
+    const stop = opts.automatic ? startRequestStatusChecks({
+      refresh: () => { const background = !first; first = false; return load(background); },
+      online: () => navigator.onLine,
+      visible: () => document.visibilityState === "visible",
+      report: state => { setSyncState(state); if (state === "offline" || state === "paused") setLoading(false); },
+      every: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
+      listen: (event, callback) => {
+        const target = event === "visibilitychange" ? document : window;
+        target.addEventListener(event, callback);
+        return () => target.removeEventListener(event, callback);
+      },
+    }) : undefined;
+    if (!opts.automatic) void load();
+    return () => { stop?.(); generation.current += 1; activeRead.current?.abort(); };
+  }, [load, opts.automatic, userId, needsMfa]);
 
-  return { data, loading, error, readIssue, reload: load };
+  const visible = !!userId && !needsMfa && owner === userId;
+  return {
+    data: visible ? data : [], loading: visible ? loading : !!userId && !needsMfa,
+    error: visible ? error : null, readIssue: visible ? readIssue : null,
+    reload: () => load(), syncState,
+  };
 }
 
 export const formatStatus = (status: RequestStatus) => status;
