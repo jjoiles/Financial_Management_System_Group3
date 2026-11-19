@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   associateUserWithRoles,
+  authorizeBackendOperation,
+  authorizeFinancialRecordAndFileAccess,
+  buildUnauthorizedAccessResponse,
+  canAccessRoute,
+  getAuthorizedActionState,
   hasPermission,
   isSystemRole,
   mapDatabaseRoleToPortalRole,
@@ -169,4 +174,282 @@ describe("F21.2: User-Role Management (F21.2.1–F21.2.3)", () => {
     });
   });
 });
+
+describe("F21.3: Front-End Authorization (F21.3.1–F21.3.3)", () => {
+  it("restricts application pages and routes according to role (F21.3.1)", () => {
+    // Public login page is always accessible
+    expect(canAccessRoute([], "/login")).toBe(true);
+
+    // Requester can access /, /submit, /tracking, /requests, but NOT /analytics or /sla
+    expect(canAccessRoute(["requester"], "/")).toBe(true);
+    expect(canAccessRoute(["requester"], "/submit")).toBe(true);
+    expect(canAccessRoute(["requester"], "/tracking")).toBe(true);
+    expect(canAccessRoute(["requester"], "/analytics")).toBe(false);
+    expect(canAccessRoute(["requester"], "/sla")).toBe(false);
+
+    // Reviewer, leadership, and admin can access /analytics and /sla
+    expect(canAccessRoute(["reviewer"], "/analytics")).toBe(true);
+    expect(canAccessRoute(["leadership"], "/analytics")).toBe(true);
+    expect(canAccessRoute(["admin"], "/sla")).toBe(true);
+  });
+
+  it("computes action visibility and disabled flags to hide or disable unauthorized UI controls (F21.3.2)", () => {
+    const requesterActions = getAuthorizedActionState(["requester"]);
+    expect(requesterActions.canCreateRequest).toBe(true);
+    expect(requesterActions.canViewOwnRequests).toBe(true);
+    expect(requesterActions.canReviewRequest).toBe(false);
+    expect(requesterActions.canViewAnalytics).toBe(false);
+    expect(requesterActions.canExportAnalyticsCsv).toBe(false);
+    expect(requesterActions.canViewSlaDashboard).toBe(false);
+    expect(requesterActions.canManageRoles).toBe(false);
+
+    const reviewerActions = getAuthorizedActionState(["reviewer"]);
+    expect(reviewerActions.canReviewRequest).toBe(true);
+    expect(reviewerActions.canViewAnalytics).toBe(true);
+    expect(reviewerActions.canExportAnalyticsCsv).toBe(true);
+    expect(reviewerActions.canViewSlaDashboard).toBe(true);
+    expect(reviewerActions.canManageRoles).toBe(false);
+
+    const adminActions = getAuthorizedActionState(["admin"]);
+    expect(adminActions.canManageRoles).toBe(true);
+  });
+
+  it("builds an appropriate 401/403 unauthorized-access response for restricted pages and actions (F21.3.3)", () => {
+    const unauth = buildUnauthorizedAccessResponse({
+      isAuthenticated: false,
+      userRoles: [],
+      targetPath: "/analytics",
+    });
+    expect(unauth).toMatchObject({
+      status: 401,
+      code: "AUTHENTICATION_REQUIRED",
+      title: "Sign-In Required",
+      requiredPermission: "analytics:view",
+      redirectTo: "/login",
+    });
+
+    const forbidden = buildUnauthorizedAccessResponse({
+      isAuthenticated: true,
+      userRoles: ["requester"],
+      targetPath: "/analytics",
+    });
+    expect(forbidden).toMatchObject({
+      status: 403,
+      code: "INSUFFICIENT_ROLE_PERMISSIONS",
+      title: "Access Restricted",
+      requiredPermission: "analytics:view",
+      redirectTo: "/",
+    });
+  });
+});
+
+describe("F21.4 & F21.5: Back-End/Data Authorization & RBAC Security Verification", () => {
+  it("permits each role's authorized backend operations (F21.4.1, F21.5.1)", () => {
+    // Requester creating and reading own request
+    expect(
+      authorizeBackendOperation({
+        authenticatedUid: "user-req-1",
+        claimedActorUid: "user-req-1",
+        userRoles: ["requester"],
+        permission: "requests:create",
+        resourceOwnerUid: "user-req-1",
+      }),
+    ).toEqual({
+      authorized: true,
+      boundUid: "user-req-1",
+      permission: "requests:create",
+    });
+
+    // Reviewer reading another user's request and recording a decision
+    expect(
+      authorizeBackendOperation({
+        authenticatedUid: "user-rev-1",
+        userRoles: ["reviewer"],
+        permission: "requests:read_own",
+        resourceOwnerUid: "user-req-1",
+      }),
+    ).toMatchObject({ authorized: true, boundUid: "user-rev-1" });
+
+    expect(
+      authorizeBackendOperation({
+        authenticatedUid: "user-rev-1",
+        userRoles: ["reviewer"],
+        permission: "requests:review_decision",
+        resourceOwnerUid: "user-req-1",
+      }),
+    ).toMatchObject({ authorized: true, boundUid: "user-rev-1" });
+
+    // Leadership exporting analytics CSV and viewing SLA dashboard
+    expect(
+      authorizeBackendOperation({
+        authenticatedUid: "user-lead-1",
+        userRoles: ["leadership"],
+        permission: "analytics:export_csv",
+      }),
+    ).toMatchObject({ authorized: true, boundUid: "user-lead-1" });
+
+    // Admin assigning roles
+    expect(
+      authorizeBackendOperation({
+        authenticatedUid: "user-admin-1",
+        userRoles: ["admin"],
+        permission: "roles:assign",
+      }),
+    ).toMatchObject({ authorized: true, boundUid: "user-admin-1" });
+  });
+
+  it("blocks prohibited actions and direct backend calls that bypass UI restrictions (F21.4.2, F21.5.2)", () => {
+    // Unauthenticated direct backend call rejected with 401
+    expect(
+      authorizeBackendOperation({
+        authenticatedUid: null,
+        userRoles: ["admin"],
+        permission: "requests:read_all",
+      }),
+    ).toMatchObject({
+      authorized: false,
+      status: 401,
+      code: "UNAUTHENTICATED",
+    });
+
+    // Requester calling review_decision or analytics:export_csv directly against backend rejected with 403
+    expect(
+      authorizeBackendOperation({
+        authenticatedUid: "user-req-1",
+        userRoles: ["requester"],
+        permission: "requests:review_decision",
+      }),
+    ).toMatchObject({
+      authorized: false,
+      status: 403,
+      code: "PERMISSION_DENIED",
+    });
+
+    // Reviewer attempting admin-only role assignment rejected with 403
+    expect(
+      authorizeBackendOperation({
+        authenticatedUid: "user-rev-1",
+        userRoles: ["reviewer"],
+        permission: "roles:assign",
+      }),
+    ).toMatchObject({
+      authorized: false,
+      status: 403,
+      code: "PERMISSION_DENIED",
+    });
+  });
+
+  it("restricts access to uploaded files and sensitive financial records across users (F21.4.3)", () => {
+    // Owner can upload and read their own file
+    expect(
+      authorizeFinancialRecordAndFileAccess({
+        authenticatedUid: "user-req-1",
+        userRoles: ["requester"],
+        recordOwnerUid: "user-req-1",
+        storagePath: "user-req-1/req-100/1700000000000-quote.pdf",
+        mode: "read",
+      }),
+    ).toMatchObject({ authorized: true, boundUid: "user-req-1" });
+
+    // Another requester cannot read user-req-1's record or file
+    expect(
+      authorizeFinancialRecordAndFileAccess({
+        authenticatedUid: "user-req-2",
+        userRoles: ["requester"],
+        recordOwnerUid: "user-req-1",
+        storagePath: "user-req-1/req-100/1700000000000-quote.pdf",
+        mode: "read",
+      }),
+    ).toMatchObject({
+      authorized: false,
+      status: 403,
+      code: "CROSS_USER_RESOURCE_DENIED",
+    });
+
+    // Reviewer CAN read user-req-1's file, but CANNOT upload into user-req-1's request bucket
+    expect(
+      authorizeFinancialRecordAndFileAccess({
+        authenticatedUid: "user-rev-1",
+        userRoles: ["reviewer"],
+        recordOwnerUid: "user-req-1",
+        storagePath: "user-req-1/req-100/1700000000000-quote.pdf",
+        mode: "read",
+      }),
+    ).toMatchObject({ authorized: true, boundUid: "user-rev-1" });
+
+    expect(
+      authorizeFinancialRecordAndFileAccess({
+        authenticatedUid: "user-rev-1",
+        userRoles: ["reviewer"],
+        recordOwnerUid: "user-req-1",
+        storagePath: "user-req-1/req-100/1700000000000-quote.pdf",
+        mode: "upload",
+      }),
+    ).toMatchObject({
+      authorized: false,
+      status: 403,
+      code: "CROSS_USER_RESOURCE_DENIED",
+    });
+  });
+
+  it("detects and blocks privilege-escalation and identity-spoofing bypass attempts (F21.5.3)", () => {
+    // 1. Payload UID spoofing (authenticated as user-req-2, claiming actor user-req-1)
+    expect(
+      authorizeBackendOperation({
+        authenticatedUid: "user-req-2",
+        claimedActorUid: "user-req-1",
+        userRoles: ["requester"],
+        permission: "requests:read_own",
+        resourceOwnerUid: "user-req-1",
+      }),
+    ).toMatchObject({
+      authorized: false,
+      status: 403,
+      code: "UID_SPOOFING_DETECTED",
+    });
+
+    // 2. Storage path traversal attempt (`../`)
+    expect(
+      authorizeFinancialRecordAndFileAccess({
+        authenticatedUid: "user-req-1",
+        userRoles: ["requester"],
+        recordOwnerUid: "user-req-1",
+        storagePath: "user-req-1/../user-req-2/req-200/secret.pdf",
+        mode: "read",
+      }),
+    ).toMatchObject({
+      authorized: false,
+      status: 403,
+      code: "CROSS_USER_RESOURCE_DENIED",
+    });
+
+    // 3. Forged/unrecognized role injection in client state (`"superadmin"`, `"root"`)
+    expect(
+      authorizeBackendOperation({
+        authenticatedUid: "user-req-1",
+        userRoles: ["superadmin", "root"],
+        permission: "roles:assign",
+      }),
+    ).toMatchObject({
+      authorized: false,
+      status: 403,
+      code: "PERMISSION_DENIED",
+    });
+
+    // 4. Non-admin attempting self-elevation to admin
+    expect(
+      validateControlledRoleAssignment({
+        actorUserId: "user-req-1",
+        actorRoles: ["requester"],
+        targetUserId: "user-req-1",
+        newRole: "admin",
+      }),
+    ).toMatchObject({
+      allowed: false,
+      code: "FORBIDDEN_ROLE_ASSIGNMENT",
+    });
+  });
+});
+
+
 

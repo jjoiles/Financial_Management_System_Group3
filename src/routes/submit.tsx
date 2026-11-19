@@ -7,6 +7,8 @@ import submitHero from "@/assets/submit-hero.jpg";
 import type { FundingSource } from "@/lib/validation/request-schema";
 import type { RoutingDecision } from "@/lib/routing/engine";
 import { previewRouting } from "@/lib/routing/preview";
+import { getVisibleFieldsForFundingSource } from "@/lib/conditional-logic";
+import { SUPPORTED_FILE_EXTENSIONS, validateAttachmentBatch } from "@/lib/file-validation";
 import { ApprovalChain, ErrorText, FlowStep, Input, Meta } from "@/components/submit/FormFields";
 
 export const Route = createFileRoute("/submit")({
@@ -27,11 +29,42 @@ function SubmitPage() {
   const auth = useAuth();
   const [fundingSource, setFundingSource] = useState<FundingSource | "">("");
   const [files, setFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState<string>("");
   const [preview, setPreview] = useState<RoutingDecision | null>(null);
   const { submitting, result, errors, submitError, submit, clearFeedback, clearResult } =
     useSubmitRequest(auth.user?.id ?? null);
   const defaultEmail = auth.user?.email ?? "";
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const visibleFields = useMemo(
+    () => getVisibleFieldsForFundingSource(fundingSource),
+    [fundingSource],
+  );
+  const acceptExtensions = useMemo(
+    () => SUPPORTED_FILE_EXTENSIONS.map((ext) => `.${ext}`).join(","),
+    [],
+  );
+
+  const handleFileSelection = (selectedFiles: File[]) => {
+    const check = validateAttachmentBatch(selectedFiles);
+    if (!check.ok) {
+      setFileError(check.issues.map((i) => i.message).join(" "));
+      return;
+    }
+    setFileError("");
+    const allowedNames = new Set(
+      check.validFiles.map((vf) => `${vf.name}::${vf.size ?? -1}`),
+    );
+    const deduped: File[] = [];
+    const seen = new Set<string>();
+    for (const f of selectedFiles) {
+      const key = `${f.name}::${f.size}`;
+      if (allowedNames.has(key) && !seen.has(key)) {
+        seen.add(key);
+        deduped.push(f);
+      }
+    }
+    setFiles(deduped);
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -40,6 +73,7 @@ function SubmitPage() {
     if (await submit(values, files)) {
       form.reset();
       setFiles([]);
+      setFileError("");
       setFundingSource("");
       setPreview(null);
     }
@@ -135,14 +169,14 @@ function SubmitPage() {
                 <Input name="neededBy" label="Needed by" type="date" min={today} error={errors.neededBy} />
               </div>
 
-              {fundingSource === "research" && (
+              {(visibleFields.showGrantNumber || visibleFields.showPrincipalInvestigator) && (
                 <div className="mt-4 grid gap-4 rounded-xl border border-border bg-background p-4 md:grid-cols-2">
                   <Input name="grantNumber" label="Grant number" placeholder="GR-2026-1048" error={errors.grantNumber} />
                   <Input name="principalInvestigator" label="Principal investigator" placeholder="Dr. Sarah Chen" error={errors.principalInvestigator} />
                 </div>
               )}
 
-              {fundingSource === "university" && (
+              {visibleFields.showUniversityProgram && (
                 <div className="mt-4 rounded-xl border border-border bg-background p-4">
                   <Input name="universityProgram" label="University program" placeholder="Student Success Initiative" error={errors.universityProgram} />
                 </div>
@@ -171,9 +205,10 @@ function SubmitPage() {
               <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-input bg-background px-4 py-8 text-center transition hover:border-primary/60 hover:bg-primary/5">
                 <UploadCloud className="h-8 w-8 text-primary" />
                 <span className="mt-2 text-sm font-semibold text-foreground">Upload supporting attachments</span>
-                <span className="mt-1 text-xs text-muted-foreground">Receipts, quotes, approvals, or justification documents</span>
-                <input className="sr-only" type="file" multiple onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+                <span className="mt-1 text-xs text-muted-foreground">Receipts, quotes, approvals, or justification documents (PDF, PNG, JPG, XLSX, CSV, DOCX up to 10 MB)</span>
+                <input className="sr-only" type="file" multiple accept={acceptExtensions} onChange={(event) => handleFileSelection(Array.from(event.target.files ?? []))} />
               </label>
+              {fileError && <ErrorText text={fileError} />}
               {files.length > 0 && (
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   {files.map((file) => (
@@ -193,7 +228,7 @@ function SubmitPage() {
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />}
                 Submit and trigger workflow
               </button>
-              <button type="reset" onClick={() => { setFundingSource(""); setFiles([]); clearFeedback(); setPreview(null); }} className="rounded-md border border-border bg-background px-6 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
+              <button type="reset" onClick={() => { setFundingSource(""); setFiles([]); setFileError(""); clearFeedback(); setPreview(null); }} className="rounded-md border border-border bg-background px-6 py-2.5 text-sm font-semibold text-foreground transition hover:bg-accent">
                 Clear form
               </button>
             </div>
