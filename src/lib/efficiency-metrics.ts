@@ -53,7 +53,7 @@ import { deepFreeze } from "@/lib/deep-freeze";
  * first commit are part of `2026-11-18.1`; every change after it requires a
  * bump.
  */
-export const EFFICIENCY_METRICS_VERSION = "2026-11-18.2";
+export const EFFICIENCY_METRICS_VERSION = "2026-11-19.2";
 
 /** Changes that require a version bump. docs/F19_Efficiency_Metrics.md section 9 lists the same items. */
 export const VERSION_BUMP_TRIGGERS = Object.freeze([
@@ -141,6 +141,12 @@ export type SourceFieldRef = {
  * chain at stage_order 1 of a new revision, so stage_order alone can point at
  * a cancelled stage of an earlier revision. Earlier revisions' stages are kept
  * as history and still count in stage metrics under their own conditions.
+ *
+ * Both fields are compared as integers, not as text, so revision 10 is newer
+ * than revision 9. A request has no decisive stage, and fails the
+ * terminal_stage_invalid condition, when two or more of its stages share the
+ * highest pair, or when any of its stages has a null or non-integer
+ * workflow_revision or stage_order.
  */
 export const DECISIVE_STAGE_ORDERING = Object.freeze([
   "workflow_revision",
@@ -164,6 +170,18 @@ export const PENDING_REQUEST_STATUSES = Object.freeze(["submitted", "under_revie
  * is never treated as approved.
  */
 export const EXCLUDED_REQUEST_STATUSES = Object.freeze(["completed"] as const);
+
+/**
+ * The approval_stage_tracking statuses allowed by the table's CHECK constraint
+ * (F16). A stage with any other status, or a null status, is excluded under
+ * unrecognized_stage_status from the stage metrics that classify decisions.
+ */
+export const APPROVAL_STAGE_STATUSES = Object.freeze([
+  "active",
+  "completed",
+  "skipped",
+  "cancelled",
+] as const);
 
 /**
  * The group for stages whose queue_id is not a QueueId in
@@ -325,6 +343,7 @@ export const DATA_QUALITY_CODES = Object.freeze([
   "orphaned_active_stage",
   "in_progress_stage",
   "skipped_or_cancelled_stage",
+  "unrecognized_stage_status",
   "stage_missing_completed_at",
   "invalid_stage_timestamps",
   "duplicate_active_stages",
@@ -381,7 +400,7 @@ export const DATA_QUALITY_CHECKS: Readonly<Record<DataQualityCode, DataQualityCh
     subject: "request",
     treatment: "excluded",
     description:
-      "The request's decisive stage, the stage with the highest (workflow_revision, stage_order), is not completed with a valid completed_at, so no decision instant can be derived.",
+      "The request's decisive stage, the stage with the highest (workflow_revision, stage_order), is not completed with a valid completed_at, so no decision instant can be derived. The pair is compared as integers, revision first, so revision 10 is newer than revision 9. There is also no decisive stage, and this code applies, when two or more stages share the highest pair or any of the request's stages has a null or non-integer workflow_revision or stage_order.",
   },
   decision_before_creation: {
     code: "decision_before_creation",
@@ -409,6 +428,13 @@ export const DATA_QUALITY_CHECKS: Readonly<Record<DataQualityCode, DataQualityCh
     subject: "stage",
     treatment: "excluded",
     description: "The stage status is skipped or cancelled, so no decision was made.",
+  },
+  unrecognized_stage_status: {
+    code: "unrecognized_stage_status",
+    subject: "stage",
+    treatment: "excluded",
+    description:
+      "The stage status is null or not one of APPROVAL_STAGE_STATUSES (active, completed, skipped, cancelled), so the stage cannot be classified as a decision. It is never treated as completed. A status absent from the row is the load-integrity error stage_field_missing instead.",
   },
   stage_missing_completed_at: {
     code: "stage_missing_completed_at",
@@ -454,7 +480,7 @@ export const DATA_QUALITY_CHECKS: Readonly<Record<DataQualityCode, DataQualityCh
 export type LimitationResolution = "F19.2" | "F19.3" | "not-resolvable" | "by-design";
 
 export const KNOWN_LIMITATION_IDS = Object.freeze([
-  "created_at_client_writable",
+  "created_at_unverified_before_hardening",
   "stage_rows_directly_writable",
   "status_update_bypasses_stage_closure",
   "stage_constraints_unenforced",
@@ -473,11 +499,11 @@ export interface KnownLimitation {
 }
 
 export const KNOWN_LIMITATIONS: Readonly<Record<KnownLimitationId, KnownLimitation>> = deepFreeze({
-  created_at_client_writable: {
-    id: "created_at_client_writable",
-    resolvedBy: "F19.2",
+  created_at_unverified_before_hardening: {
+    id: "created_at_unverified_before_hardening",
+    resolvedBy: "not-resolvable",
     description:
-      "created_at defaults to now() but a client-supplied value is kept on insert, and the owner can update it while the request is submitted. F5 does not log the change.",
+      "Since migration 20261119120100_f19_5_4_1_security_hardening the database assigns created_at on insert and rejects every later change, for every role and request status. Requests stored before that migration keep their original value, which a client could have supplied on insert and the owner (while submitted) or an admin, reviewer or leadership user could have changed later; F5 did not log those changes, so such values cannot be verified.",
   },
   stage_rows_directly_writable: {
     id: "stage_rows_directly_writable",
@@ -655,6 +681,11 @@ const COMPLETED_STAGE_CONDITIONS: readonly PopulationCondition[] = [
     exclusion: "skipped_or_cancelled_stage",
   },
   {
+    requirement:
+      "The stage status is one of APPROVAL_STAGE_STATUSES (active, completed, skipped, cancelled); a null or other status is never treated as completed.",
+    exclusion: "unrecognized_stage_status",
+  },
+  {
     requirement: "A completed stage has a completed_at.",
     exclusion: "stage_missing_completed_at",
   },
@@ -692,7 +723,7 @@ export const TRACKED_TERMINAL_POPULATION: MetricPopulation = deepFreeze({
     },
     {
       requirement:
-        "The decisive stage, the stage with the highest (workflow_revision, stage_order), has status completed and a valid completed_at; that completed_at is the decision instant T(r).",
+        "The decisive stage, the stage with the highest (workflow_revision, stage_order), has status completed and a valid completed_at; that completed_at is the decision instant T(r). The pair is compared as integers, revision first. There is no decisive stage when two or more stages share the highest pair or any of the request's stages has a null or non-integer workflow_revision or stage_order.",
       exclusion: "terminal_stage_invalid",
     },
     {
@@ -721,7 +752,7 @@ const TRACKED_TERMINAL_PERIOD: PeriodAssignment = {
 };
 
 const TRACKED_TERMINAL_LIMITATIONS: readonly KnownLimitationId[] = [
-  "created_at_client_writable",
+  "created_at_unverified_before_hardening",
   "stage_rows_directly_writable",
   "status_update_bypasses_stage_closure",
   "historical_stage_gaps",
@@ -841,7 +872,7 @@ export const EFFICIENCY_METRICS: Readonly<Record<EfficiencyMetricId, EfficiencyM
         "Counts each remaining request once, whatever its status, including rejected, pending, completed and requests whose workflow failed.",
       ],
       limitations: [
-        "created_at_client_writable",
+        "created_at_unverified_before_hardening",
         "unbounded_reads",
         "non_atomic_reads",
         "role_scoped_visibility",

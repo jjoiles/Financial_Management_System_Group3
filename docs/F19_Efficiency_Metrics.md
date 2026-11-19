@@ -48,11 +48,45 @@ Out of scope:
 | `src/lib/efficiency-data-loader.ts`      | F19.3 Supabase-bound `loadEfficiencyDataset` and its retry policy (§8.1)                    |
 | `src/lib/efficiency-data-loader.test.ts` | Loader tests against controlled fakes of the existing clients                               |
 
+F19.4 calculation modules (section 8.3). Each has a `.test.ts` file beside it except `efficiency-classification.ts`: its load-gating tests are in `efficiency-population.test.ts` and its classification-engine tests in `efficiency-population-classification.test.ts`. `efficiency-calculation.test.ts` tests the shared period check and per-queue output directly; the calculator tests also exercise them.
+
+| File                                          | Role                                                                                                      |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `src/lib/efficiency-stats.ts`                 | `hoursBetween`, `average`, `median` and `NO_DATA`: calendar hours and statistics, no metric knowledge     |
+| `src/lib/efficiency-population.ts`            | Dataset indexing, decisive-stage selection, recognized queue IDs and queue grouping                       |
+| `src/lib/efficiency-classification.ts`        | Per-metric load gating, the catalog-driven classification engine, its predicates, flag rules and scopes   |
+| `src/lib/efficiency-calculation.ts`           | Steps every calculator shares: period check, indexing a ready load, catalog anchor test, per-queue output |
+| `src/lib/efficiency-request-volume.ts`        | `calculateRequestVolume`                                                                                  |
+| `src/lib/efficiency-stage-processing-time.ts` | `calculateStageProcessingTime` (average and median)                                                       |
+| `src/lib/efficiency-queue-throughput.ts`      | `calculateQueueThroughput`                                                                                |
+| `src/lib/efficiency-decision-metrics.ts`      | `calculateRequestTurnaroundTime` (average and median) and `calculateApprovalRate`, sharing one population |
+| `src/lib/efficiency-active-queue-workload.ts` | `calculateActiveQueueWorkload` and its `pending_without_stage` report                                     |
+| `src/lib/efficiency-analytics.ts`             | Public entry point `calculateEfficiencyMetrics`: every catalog metric from one load (section 8.3)         |
+| `src/lib/efficiency-analytics.test.ts`        | Integration tests: catalog coverage, independent gating, period and snapshot handling, module layering    |
+
 Dependency direction (arrows point to the module being imported):
 
 ```
 efficiency-metrics.ts ──▶ deep-freeze.ts   (no imports)
+
+efficiency-analytics.ts                          entry point; nothing imports it
+  ──▶ efficiency-request-volume.ts, efficiency-stage-processing-time.ts,
+      efficiency-queue-throughput.ts, efficiency-decision-metrics.ts,
+      efficiency-active-queue-workload.ts        calculators; never import each other
+        ──▶ efficiency-calculation.ts             shared calculation steps (every calculator)
+        ──▶ efficiency-classification.ts          gating and classification (every calculator)
+        ──▶ efficiency-population.ts              decisive stage (efficiency-decision-metrics.ts only)
+        ──▶ efficiency-stats.ts                   hours and statistics (efficiency-stage-processing-time.ts,
+                                                  efficiency-decision-metrics.ts)
+
+efficiency-calculation.ts     ──▶ efficiency-classification.ts (types only), efficiency-population.ts
+efficiency-classification.ts  ──▶ efficiency-population.ts, efficiency-stats.ts
+efficiency-population.ts, efficiency-stats.ts     no other F19.4 module
+Every layer may also import efficiency-metrics.ts, F19.3 types from efficiency-data.ts,
+F18 (time-zones.ts, reporting-periods.ts) and routing/rules.ts.
 ```
+
+- The F19.4 modules are pure and browser-safe. None imports Supabase, React or `efficiency-data-loader.ts`, and none imports a module above it. `efficiency-analytics.test.ts` checks the layering for every F19 module.
 
 - The catalog imports only `deep-freeze.ts`. It does not import React, Supabase clients, routes or F18 modules.
 - F18 modules (`time-zones.ts`, `reporting-periods.ts`, `reporting-period-config.ts`, `date-range-filter.ts`) and `deep-freeze.ts` must not import the catalog. A test checks both directions.
@@ -61,22 +95,23 @@ efficiency-metrics.ts ──▶ deep-freeze.ts   (no imports)
 
 Catalog exports:
 
-| Export                                                                               | Content                                                                 |
-| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| `EFFICIENCY_METRICS_VERSION`, `VERSION_BUMP_TRIGGERS`                                | Catalog version and the changes that require a bump (section 9)         |
-| `EFFICIENCY_METRIC_FAMILIES`                                                         | The six approved metrics                                                |
-| `EFFICIENCY_METRIC_IDS`                                                              | Eight stable identifiers (the average and median variants are separate) |
-| `EFFICIENCY_METRICS`                                                                 | Definitions keyed by identifier                                         |
-| `SOURCE_FIELDS`                                                                      | The only database columns a metric may reference; each one is used      |
-| `DECISIVE_STAGE_ORDERING`                                                            | `(workflow_revision, stage_order)`: how the decisive stage is chosen    |
-| `TERMINAL_REQUEST_STATUSES`, `PENDING_REQUEST_STATUSES`, `EXCLUDED_REQUEST_STATUSES` | `approved, rejected` / `submitted, under_review` / `completed`          |
-| `UNKNOWN_QUEUE_GROUP`                                                                | The group for unrecognized queue IDs (`unknown`)                        |
-| `LOAD_INTEGRITY_PRECONDITION`, `LOAD_INTEGRITY_ERROR_CODES`, `LOAD_INTEGRITY_ERRORS` | Load-integrity rule and the errors that block calculation (section 3.3) |
-| `STAGE_READ_COVERAGE`                                                                | Which stage records each stage read must return (section 3.3)           |
-| `TRACKED_TERMINAL_POPULATION`                                                        | The shared turnaround and approval-rate population (section 4.4)        |
-| `STATISTIC_DEFINITIONS`                                                              | Average and median definitions                                          |
-| `DATA_QUALITY_RULES`, `DATA_QUALITY_CODES`, `DATA_QUALITY_CHECKS`                    | Precedence rules and record-level codes (section 6)                     |
-| `KNOWN_LIMITATION_IDS`, `KNOWN_LIMITATIONS`                                          | Known data limitations and what resolves them (section 7)               |
+| Export                                                                               | Content                                                                             |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `EFFICIENCY_METRICS_VERSION`, `VERSION_BUMP_TRIGGERS`                                | Catalog version and the changes that require a bump (section 9)                     |
+| `EFFICIENCY_METRIC_FAMILIES`                                                         | The six approved metrics                                                            |
+| `EFFICIENCY_METRIC_IDS`                                                              | Eight stable identifiers (the average and median variants are separate)             |
+| `EFFICIENCY_METRICS`                                                                 | Definitions keyed by identifier                                                     |
+| `SOURCE_FIELDS`                                                                      | The only database columns a metric may reference; each one is used                  |
+| `DECISIVE_STAGE_ORDERING`                                                            | `(workflow_revision, stage_order)`: how the decisive stage is chosen                |
+| `TERMINAL_REQUEST_STATUSES`, `PENDING_REQUEST_STATUSES`, `EXCLUDED_REQUEST_STATUSES` | `approved, rejected` / `submitted, under_review` / `completed`                      |
+| `APPROVAL_STAGE_STATUSES`                                                            | `active, completed, skipped, cancelled`: the stage statuses allowed by the database |
+| `UNKNOWN_QUEUE_GROUP`                                                                | The group for unrecognized queue IDs (`unknown`)                                    |
+| `LOAD_INTEGRITY_PRECONDITION`, `LOAD_INTEGRITY_ERROR_CODES`, `LOAD_INTEGRITY_ERRORS` | Load-integrity rule and the errors that block calculation (section 3.3)             |
+| `STAGE_READ_COVERAGE`                                                                | Which stage records each stage read must return (section 3.3)                       |
+| `TRACKED_TERMINAL_POPULATION`                                                        | The shared turnaround and approval-rate population (section 4.4)                    |
+| `STATISTIC_DEFINITIONS`                                                              | Average and median definitions                                                      |
+| `DATA_QUALITY_RULES`, `DATA_QUALITY_CODES`, `DATA_QUALITY_CHECKS`                    | Precedence rules and record-level codes (section 6)                                 |
+| `KNOWN_LIMITATION_IDS`, `KNOWN_LIMITATIONS`                                          | Known data limitations and what resolves them (section 7)                           |
 
 Each metric definition has: `id`, `family`, `name`, `definition`, `formula`, `statistic`, `unit`, `groupings`, `emptyResult`, `sources`, `requiredReads`, `stageReadCoverage`, `loadIntegrityErrors`, `period`, `population`, `flags`, `separateReports`, `calculationRules` and `limitations`. Everything is deeply frozen.
 
@@ -160,7 +195,7 @@ Required reads per metric (`stageReadCoverage` values are defined in `STAGE_READ
 - Only `financial_requests` (`id`, `status`, `created_at`) and `approval_stage_tracking` (`request_id`, `workflow_revision`, `stage_order`, `queue_id`, `status`, `started_at`, `completed_at`) are used.
 - `approval_stage_tracking.id` is not a metric source. F19.3 loaders select it only as the keyset pagination key.
 - `financial_requests.updated_at` is never used. Triggers update it for changes unrelated to the workflow, such as metadata and attachment sync.
-- `workflow_events` is **not** a source, including for outcomes, while requesters and reviewers can insert arbitrary rows into it (F19.2).
+- `workflow_events` is **not** a source, including for outcomes. Since F19.5.4.2 a client can no longer write a database-generated event type or `source`, but client events remain client-authored and events stored earlier cannot be shown to be database-generated (`docs/F19_Security_Hardening.md`).
 
 ### 3.5 Request statuses
 
@@ -206,7 +241,10 @@ RLS shows admin, reviewer and leadership users every request and stage, and requ
 
 F19.2 added `workflow_revision` to `financial_requests` and `approval_stage_tracking`. An amendment (`f19_amend_request_workflow`) cancels the request's active stage, increments the revision, and restarts the approval chain at `stage_order` 1 of the new revision. Stages of earlier revisions are kept as history.
 
+Only requests awaiting a decision (`submitted`, `under_review`) can be amended, and `approved`, `rejected` and `completed` are final (section 8.2). An amendment therefore always replaces an approval chain that had not finished; it never reopens a recorded decision or moves it out of a closed reporting period.
+
 - A request's **decisive stage** is the stage with the highest `(workflow_revision, stage_order)` pair (`DECISIVE_STAGE_ORDERING`): the highest `workflow_revision` first, then the highest `stage_order` within it. `stage_order` alone is not enough, because a cancelled stage 2 of revision 1 has a higher `stage_order` than a decisive stage 1 of revision 2.
+- Both fields are compared as integers, not as text, so revision 10 is newer than revision 9. A request has **no decisive stage**, and is excluded as `terminal_stage_invalid`, when two or more of its stages share the highest pair, or when any of its stages has a null or non-integer `workflow_revision` or `stage_order`. An invalid key on any stage counts, because without it the highest pair cannot be known; a tie below the highest pair does not change which stage is decisive and does not count. The database prevents both (`UNIQUE (request_id, workflow_revision, stage_order)` and `NOT NULL INTEGER` columns), so these cases come only from data that bypassed those constraints.
 - Stage records of earlier revisions stay in every stage population. A cancelled stage is excluded as `skipped_or_cancelled_stage`; a completed stage of an earlier revision is a real queue decision and counts in Stage Processing Time and Queue Throughput.
 - Turnaround is still measured from the original `financial_requests.created_at`, so for an amended request it includes the time spent in earlier revisions (section 5.8).
 - **Decisive stage vs. elapsed time.** Only the decisive stage supplies the decision instant T(r), and condition 6 requires it to be `completed`. A cancelled stage can never be decisive. Its elapsed time still lies between `created_at` and T(r), so it is part of the request's turnaround even though it supplies no decision instant and is excluded from Stage Processing Time and Queue Throughput.
@@ -241,7 +279,7 @@ Each metric has a **population**: a subject (request or stage), a **scope**, and
 
 **Rules:** each remaining request counts once, whatever its status, including rejected, pending, `completed`, and requests whose workflow failed.
 
-**Limitations:** `created_at_client_writable`, `unbounded_reads`, `non_atomic_reads`, `role_scoped_visibility`.
+**Limitations:** `created_at_unverified_before_hardening`, `unbounded_reads`, `non_atomic_reads`, `role_scoped_visibility`.
 
 ### 4.2 Active Queue Workload — `active_queue_workload`
 
@@ -310,10 +348,11 @@ An active stage of an approved, rejected or `completed` request is an inconsiste
 | 1   | The stage is not an active stage of a request that is no longer pending (approved, rejected or completed) | `orphaned_active_stage`      |
 | 2   | The stage is not active                                                                                   | `in_progress_stage`          |
 | 3   | The stage is not skipped or cancelled                                                                     | `skipped_or_cancelled_stage` |
-| 4   | A completed stage has a `completed_at`                                                                    | `stage_missing_completed_at` |
-| 5   | `started_at` and `completed_at` are valid instants and `completed_at` is not earlier than `started_at`    | `invalid_stage_timestamps`   |
+| 4   | The stage status is one of `active`, `completed`, `skipped`, `cancelled` (`APPROVAL_STAGE_STATUSES`)      | `unrecognized_stage_status`  |
+| 5   | A completed stage has a `completed_at`                                                                    | `stage_missing_completed_at` |
+| 6   | `started_at` and `completed_at` are valid instants and `completed_at` is not earlier than `started_at`    | `invalid_stage_timestamps`   |
 
-Condition 1 comes before condition 2, so an orphaned stage is never counted as an ordinary in-progress stage.
+Condition 1 comes before condition 2, so an orphaned stage is never counted as an ordinary in-progress stage. A stage that passes conditions 1 to 4 has status `completed`; a null or unrecognized status is never treated as completed.
 
 **Flags:** `unknown_queue`.
 
@@ -329,15 +368,15 @@ The existing `queuePerformance` block in `src/routes/sla.tsx` is similar but is 
 
 **Tracked terminal population** (`TRACKED_TERMINAL_POPULATION`, shared with Approval Rate). Scope: requests whose status is `approved`, `rejected` or `completed`; pending requests are outside the population and are not counted (subject: request). A **tracked terminal request** is one that meets every condition:
 
-| #   | Condition                                                                                                                                               | Exclusion code                       |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| 1   | The request is a real database request, not a browser prototype                                                                                         | `prototype_request`                  |
-| 2   | The status is `approved` or `rejected`; `completed` is never treated as approved                                                                        | `completed_status`                   |
-| 3   | `created_at` is a valid instant                                                                                                                         | `invalid_created_at`                 |
-| 4   | The request has at least one approval stage record                                                                                                      | `untracked_terminal_request`         |
-| 5   | None of the request's stages is active                                                                                                                  | `terminal_request_with_active_stage` |
-| 6   | The decisive stage (highest `(workflow_revision, stage_order)`, §3.10) has status `completed` and a valid `completed_at`, the decision instant **T(r)** | `terminal_stage_invalid`             |
-| 7   | T(r) is not earlier than `created_at`                                                                                                                   | `decision_before_creation`           |
+| #   | Condition                                                                                                                                                                                                                                                                           | Exclusion code                       |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| 1   | The request is a real database request, not a browser prototype                                                                                                                                                                                                                     | `prototype_request`                  |
+| 2   | The status is `approved` or `rejected`; `completed` is never treated as approved                                                                                                                                                                                                    | `completed_status`                   |
+| 3   | `created_at` is a valid instant                                                                                                                                                                                                                                                     | `invalid_created_at`                 |
+| 4   | The request has at least one approval stage record                                                                                                                                                                                                                                  | `untracked_terminal_request`         |
+| 5   | None of the request's stages is active                                                                                                                                                                                                                                              | `terminal_request_with_active_stage` |
+| 6   | The decisive stage (highest `(workflow_revision, stage_order)`, compared as integers, §3.10) exists, is unique, and has status `completed` and a valid `completed_at`, the decision instant **T(r)**. Ties at the highest pair and null or non-integer keys leave no decisive stage | `terminal_stage_invalid`             |
+| 7   | T(r) is not earlier than `created_at`                                                                                                                                                                                                                                               | `decision_before_creation`           |
 
 `f16_record_approval_decision` completes the stage and sets the final status in one transaction with the same timestamp, so `T(r)` is exactly the decision time. It comes only from the stage table, which requesters cannot write.
 
@@ -368,7 +407,7 @@ F19.5 can use this identity as a consistency check. Direct stage edits (`stage_r
 
 **Flags:** none.
 
-**Limitations:** `created_at_client_writable`, `stage_rows_directly_writable`, `status_update_bypasses_stage_closure`, `historical_stage_gaps`, `unbounded_reads`, `non_atomic_reads`, `role_scoped_visibility`.
+**Limitations:** `created_at_unverified_before_hardening`, `stage_rows_directly_writable`, `status_update_bypasses_stage_closure`, `historical_stage_gaps`, `unbounded_reads`, `non_atomic_reads`, `role_scoped_visibility`.
 
 `updated_at − created_at` is **not** turnaround, despite the suggestion in `docs/DEBT_AND_RISK.md`.
 
@@ -389,15 +428,15 @@ F19.5 can use this identity as a consistency check. Direct stage edits (`stage_r
 
 **Population:** exactly the tracked terminal population of section 4.4, including `decision_before_creation`:
 
-| #   | Condition                                                                                                                                               | Exclusion code                       |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| 1   | The request is a real database request, not a browser prototype                                                                                         | `prototype_request`                  |
-| 2   | The status is `approved` or `rejected`; `completed` is never treated as approved                                                                        | `completed_status`                   |
-| 3   | `created_at` is a valid instant                                                                                                                         | `invalid_created_at`                 |
-| 4   | The request has at least one approval stage record                                                                                                      | `untracked_terminal_request`         |
-| 5   | None of the request's stages is active                                                                                                                  | `terminal_request_with_active_stage` |
-| 6   | The decisive stage (highest `(workflow_revision, stage_order)`, §3.10) has status `completed` and a valid `completed_at`, the decision instant **T(r)** | `terminal_stage_invalid`             |
-| 7   | T(r) is not earlier than `created_at`                                                                                                                   | `decision_before_creation`           |
+| #   | Condition                                                                                                                                                                                                                                                                           | Exclusion code                       |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| 1   | The request is a real database request, not a browser prototype                                                                                                                                                                                                                     | `prototype_request`                  |
+| 2   | The status is `approved` or `rejected`; `completed` is never treated as approved                                                                                                                                                                                                    | `completed_status`                   |
+| 3   | `created_at` is a valid instant                                                                                                                                                                                                                                                     | `invalid_created_at`                 |
+| 4   | The request has at least one approval stage record                                                                                                                                                                                                                                  | `untracked_terminal_request`         |
+| 5   | None of the request's stages is active                                                                                                                                                                                                                                              | `terminal_request_with_active_stage` |
+| 6   | The decisive stage (highest `(workflow_revision, stage_order)`, compared as integers, §3.10) exists, is unique, and has status `completed` and a valid `completed_at`, the decision instant **T(r)**. Ties at the highest pair and null or non-integer keys leave no decisive stage | `terminal_stage_invalid`             |
+| 7   | T(r) is not earlier than `created_at`                                                                                                                                                                                                                                               | `decision_before_creation`           |
 
 **Flags:** none.
 
@@ -427,8 +466,9 @@ F19.5 can use this identity as a consistency check. Direct stage edits (`stage_r
 | #   | Condition                                                                                              | Exclusion code               |
 | --- | ------------------------------------------------------------------------------------------------------ | ---------------------------- |
 | 1   | The stage is not skipped or cancelled                                                                  | `skipped_or_cancelled_stage` |
-| 2   | A completed stage has a `completed_at`                                                                 | `stage_missing_completed_at` |
-| 3   | `started_at` and `completed_at` are valid instants and `completed_at` is not earlier than `started_at` | `invalid_stage_timestamps`   |
+| 2   | The stage status is one of `active`, `completed`, `skipped`, `cancelled` (`APPROVAL_STAGE_STATUSES`)   | `unrecognized_stage_status`  |
+| 3   | A completed stage has a `completed_at`                                                                 | `stage_missing_completed_at` |
+| 4   | `started_at` and `completed_at` are valid instants and `completed_at` is not earlier than `started_at` | `invalid_stage_timestamps`   |
 
 **Flags:** `unknown_queue`.
 
@@ -587,6 +627,7 @@ Data-quality codes describe records in a complete dataset. They are applied by t
 | `orphaned_active_stage`              | stage   | excluded            | `active_queue_workload`, `stage_processing_time`                                      |
 | `in_progress_stage`                  | stage   | excluded            | `stage_processing_time`                                                               |
 | `skipped_or_cancelled_stage`         | stage   | excluded            | `stage_processing_time`, `queue_throughput`                                           |
+| `unrecognized_stage_status`          | stage   | excluded            | `stage_processing_time`, `queue_throughput`                                           |
 | `stage_missing_completed_at`         | stage   | excluded            | `stage_processing_time`, `queue_throughput`                                           |
 | `invalid_stage_timestamps`           | stage   | excluded            | `stage_processing_time`, `queue_throughput`                                           |
 | `duplicate_active_stages`            | request | flagged             | `active_queue_workload`                                                               |
@@ -597,17 +638,17 @@ The full descriptions are in `DATA_QUALITY_CHECKS`. The codes are stable identif
 
 ## 7. Data-quality and historical limitations
 
-| Limitation                             | Resolved by    | Effect                                                                                                                                                                                       |
-| -------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `created_at_client_writable`           | F19.2          | A client can supply `created_at` on insert, and the owner can change it while the request is submitted. F5 does not log it. Affects Volume, Turnaround, Approval.                            |
-| `stage_rows_directly_writable`         | F19.2          | Admin, reviewer and leadership can insert, update and delete stage rows, including timestamps.                                                                                               |
-| `status_update_bypasses_stage_closure` | F19.2          | A direct status update leaves the active stage open, creating orphaned stages and decided requests without a trusted decision instant.                                                       |
-| `stage_constraints_unenforced`         | F19.2          | `queue_id` is free text; one active stage per request and one stage per queue per request are not database constraints.                                                                      |
-| `stage_outcome_not_recorded`           | F19.2          | Rejected stages are stored as `completed`; stage metrics cannot be split by outcome.                                                                                                         |
-| `historical_stage_gaps`                | not resolvable | Requests created before F16 stage tracking was in place on a given database, and requests whose workflow failed, have no stages. No cutoff date is assumed (see below).                      |
-| `unbounded_reads`                      | F19.3          | Existing reads are not paginated and may be truncated; the stage loader in `requests-data.ts` reads only active stages and hides errors. Under section 3.3 these block calculation instead.  |
-| `non_atomic_reads`                     | by design      | Every required read is paginated (all metrics), and metrics that combine both tables also read them at different moments, so a loaded dataset is not a single database snapshot (see below). |
-| `role_scoped_visibility`               | by design      | Requesters see only their own rows (section 3.9).                                                                                                                                            |
+| Limitation                               | Resolved by    | Effect                                                                                                                                                                                                                                                                        |
+| ---------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `created_at_unverified_before_hardening` | not resolvable | Since migration `20261119120100_f19_5_4_1_security_hardening` the database assigns `created_at` on insert and rejects every change. Values stored before it may have been client-supplied or changed, unlogged, and cannot be verified. Affects Volume, Turnaround, Approval. |
+| `stage_rows_directly_writable`           | F19.2          | Admin, reviewer and leadership can insert, update and delete stage rows, including timestamps.                                                                                                                                                                                |
+| `status_update_bypasses_stage_closure`   | F19.2          | A direct status update leaves the active stage open, creating orphaned stages and decided requests without a trusted decision instant.                                                                                                                                        |
+| `stage_constraints_unenforced`           | F19.2          | `queue_id` is free text; one active stage per request and one stage per queue per request are not database constraints.                                                                                                                                                       |
+| `stage_outcome_not_recorded`             | F19.2          | Rejected stages are stored as `completed`; stage metrics cannot be split by outcome.                                                                                                                                                                                          |
+| `historical_stage_gaps`                  | not resolvable | Requests created before F16 stage tracking was in place on a given database, and requests whose workflow failed, have no stages. No cutoff date is assumed (see below).                                                                                                       |
+| `unbounded_reads`                        | F19.3          | Existing reads are not paginated and may be truncated; the stage loader in `requests-data.ts` reads only active stages and hides errors. Under section 3.3 these block calculation instead.                                                                                   |
+| `non_atomic_reads`                       | by design      | Every required read is paginated (all metrics), and metrics that combine both tables also read them at different moments, so a loaded dataset is not a single database snapshot (see below).                                                                                  |
+| `role_scoped_visibility`                 | by design      | Requesters see only their own rows (section 3.9).                                                                                                                                                                                                                             |
 
 **Historical records.** The repository does not record when the F16 stage-tracking migration was applied to any database; its filename timestamp is when it was written, not when it was deployed. No cutoff date is therefore assumed. Past stage timings cannot be reconstructed, so no backfill is proposed. Requests without stage records are counted in Volume and reported under `untracked_terminal_request` or `pending_without_stage`; they never contribute estimated durations.
 
@@ -632,7 +673,7 @@ Results are therefore described as of the load's read interval, not a single ins
 | ----------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | F19.2 – Capture Workflow Stage Events     | The limitations marked F19.2 (section 7)                  | Trusted `created_at`; restricted direct writes to stages and status; closing or cancelling stages on direct status changes; stage outcome; workflow-event write permissions. Migrations in `supabase/migrations/`.                                                                                                                                            |
 | F19.3 – Capture Workload Data             | `SOURCE_FIELDS`, required reads, the load-integrity rule  | Paginated, error-reporting request and stage loaders that honour each metric's `stageReadCoverage` (every stage status for workload), select every required source field, validate pagination completeness and per-table counts, and report load-integrity errors by code, following the AGENTS.md read-error rules. Implemented as described in section 8.1. |
-| F19.4 – Implement Efficiency Calculations | Every definition, population, precedence, anchor and code | Pure aggregation functions that read this catalog, block on load-integrity errors, apply conditions in order, use `filterByPeriod` for periods, and return values with data-quality counts by code.                                                                                                                                                           |
+| F19.4 – Implement Efficiency Calculations | Every definition, population, precedence, anchor and code | Pure aggregation functions that read this catalog, block on load-integrity errors, apply conditions in order, use the F18 half-open period test (`isWithinPeriod`, the test `filterByPeriod` applies), and return values with data-quality counts by code. Implemented as described in section 8.3.                                                           |
 | F19.5 – Validate and Document Analytics   | Section 5 examples and the turnaround identity            | Tests reproducing section 5, SQL verification for F19.2 changes, and an update to the F19 row of `docs/Lab5_Requirements_Traceability_Matrix.md`.                                                                                                                                                                                                             |
 
 Metrics that can be calculated before F19.2 lands: all six, once F19.3 provides complete reads. Their exclusion counts show how incomplete the data is until F19.2 closes the integrity gaps.
@@ -695,6 +736,107 @@ Validate the loader with:
 npx vitest run src/lib/efficiency-data.test.ts src/lib/efficiency-data-loader.test.ts
 ```
 
+### 8.2 F19.2 decision status guard (implemented)
+
+Before this follow-up, a recorded decision could be undone in two ways: `f19_amend_request_workflow` accepted requests in any status and reset them to `submitted`, and the `financial_requests` update policy let admin and reviewer roles change `status` directly. Either path removed a decided request from the tracked terminal population of an already closed period, with no data-quality code to show it, and the original outcome is not kept in any trusted source (a rejected stage is stored as `completed`, `stage_outcome_not_recorded`).
+
+`supabase/migrations/20261119072711_f19_2_decision_status_guard.sql` adds two layers without editing the F19.2 migration:
+
+- **Amendment eligibility.** `f19_amend_request_workflow` refuses requests that are not `submitted` or `under_review`. The check runs after the row lock and authorization check and before any validation or write; the rest of the function, its grants and the pending-request amendment flow are unchanged.
+- **Status guard.** The `zz_f19_guard_request_status` trigger (`BEFORE INSERT OR UPDATE`, fires after every other BEFORE trigger) enforces:
+
+| Rule | Applies to                                          | Effect                                                                                                              |
+| ---- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| R1   | Every caller                                        | `approved`, `rejected` and `completed` never change, including `approved → completed`                               |
+| R2   | API roles (`anon`, `authenticated`, `service_role`) | No status change; inserts must be `submitted`                                                                       |
+| R3   | The table owner                                     | Only `submitted → under_review`, `under_review → submitted`, and `submitted`/`under_review` → `approved`/`rejected` |
+| R4   | The table owner, moving to `approved` or `rejected` | No active stage, and the highest-`stage_order` stage of the current `workflow_revision` is `completed`              |
+
+**Trust.** The trigger function is `SECURITY INVOKER`, so `current_user` is the role running the statement: the API role for a direct write, and the function owner inside the `SECURITY DEFINER` workflow functions (`f16_record_approval_decision`, `f19_amend_request_workflow`). A write is trusted only when `current_user` is the table owner, read from `pg_class` at run time. Custom settings such as `app.f19_trusted_workflow_write` are not trusted, because any role can set them.
+
+**Effect on the metrics.** Every new decision is made by `f16_record_approval_decision`, is backed by a completed final stage (so condition 6 can always derive T(r)), and cannot later leave the tracked terminal population. This closes the direct-update path described by `status_update_bypasses_stage_closure`. The catalog is unchanged and no version bump is needed. Requests reopened before the guard was applied are not repaired or reconstructed; identifying them is an F19.5 verification task.
+
+Validate the guard against the local stack:
+
+```sh
+npx vitest run src/lib/workflow/decision-status-guard-migration.test.ts
+docker exec -i <local-db-container> psql -U postgres -d postgres -v ON_ERROR_STOP=1 -X < verification/f19_2_status_guard.sql
+bash verification/f19_2_status_guard_concurrency.sh <local-db-container>
+```
+
+### 8.3 F19.4 metric calculations (implemented)
+
+F19.4 calculates every catalog metric from an F19.3 load result. The calculations are pure functions in the modules listed in section 2; they read the catalog and never redefine it. Formulas, populations, condition order, flags and separate reports are exactly those of sections 3 to 6.
+
+**Entry point.** `calculateEfficiencyMetrics(input)` in `efficiency-analytics.ts`:
+
+```ts
+calculateEfficiencyMetrics({
+  load,               // DatasetIntegrityResult (or the loader's EfficiencyLoadResult)
+  period,             // F18 PeriodBounds for the period-assigned metrics
+  prototypeRequests,  // optional; must already be scoped to the signed-in owner
+}): {
+  catalogVersion,     // EFFICIENCY_METRICS_VERSION
+  period,             // the period given to the period-assigned metrics
+  metrics,            // one result per metric id, in EFFICIENCY_METRIC_IDS order
+}
+```
+
+It calls each metric's own calculator with the same load and returns that calculator's result unchanged, so every metric keeps its own result type. It does no calculation of its own.
+
+| Metric ID                                                           | Calculator                                 |
+| ------------------------------------------------------------------- | ------------------------------------------ |
+| `request_volume`                                                    | `calculateRequestVolume`                   |
+| `active_queue_workload`                                             | `calculateActiveQueueWorkload`             |
+| `stage_processing_time_average`, `stage_processing_time_median`     | `calculateStageProcessingTime(metricId)`   |
+| `request_turnaround_time_average`, `request_turnaround_time_median` | `calculateRequestTurnaroundTime(metricId)` |
+| `approval_rate`                                                     | `calculateApprovalRate`                    |
+| `queue_throughput`                                                  | `calculateQueueThroughput`                 |
+
+**Result statuses.** Every metric result is one of:
+
+- `calculated`: the value, with `metricId`, `catalogVersion`, the period (or, for workload, the snapshot's read windows), the records counted and the population with its exclusion and flag counts.
+- `blocked`: a load-integrity error that applies to this metric, with its codes, the incomplete required tables, the read `issue` (access or unavailable) and every error on the load. It has no value, no zero, no no-data and no data-quality counts (section 3.3).
+- `cancelled`: the load was cancelled. Nothing is calculated.
+
+Within a calculated result, an empty population gives the catalog's `emptyResult`: the number 0 for Request Volume, Queue Throughput and every recognized queue of Active Queue Workload; no-data (`{ kind: "no-data" }`, never 0) for Stage Processing Time, Request Turnaround Time and Approval Rate (when A + R = 0). A value is `{ kind: "value", value }`, in hours or as a fraction from 0 to 1 for Approval Rate.
+
+**Independent load gating.** There is no global gate. Each calculator applies `gateMetricLoad` with its own catalog `requiredReads` and `loadIntegrityErrors`, so one failed read blocks only the metrics that need it:
+
+| Metric                  | Reads it needs      | Calculated despite                                       |
+| ----------------------- | ------------------- | -------------------------------------------------------- |
+| Request Volume          | requests only       | any stage read error and `stage_request_not_loaded`      |
+| Queue Throughput        | stages only         | any request read error and `stage_request_not_loaded`    |
+| Stage Processing Time   | requests and stages | nothing: every read error and `stage_request_not_loaded` |
+| Request Turnaround Time | requests and stages | nothing: every read error and `stage_request_not_loaded` |
+| Approval Rate           | requests and stages | nothing: every read error and `stage_request_not_loaded` |
+| Active Queue Workload   | requests and stages | nothing: every read error and `stage_request_not_loaded` |
+
+**Periods and the workload snapshot.** The seven period-assigned metrics receive the same `period` and test their catalog anchor with the F18 half-open rule (`startUtc <= instant < endExclusiveUtc`): `created_at` for Request Volume, the stage's `completed_at` for Stage Processing Time and Queue Throughput, and the decisive stage's `completed_at` (T(r)) for Request Turnaround Time and Approval Rate. The period filter runs after classification, so data-quality counts describe the whole supplied dataset in every period (rule 5). Active Queue Workload is a snapshot: it never receives the period, uses no timestamp and reports each table's read window instead.
+
+**Active Queue Workload output.** One distinct-request count per recognized queue, always present and 0 when empty, plus the unknown group when it has workload. There is no overall value: the catalog groups this metric by queue only, and summing the queues would count a request active in two queues twice. `pending_without_stage` is reported separately and never changes the workload.
+
+**Prototype requests.** The caller must scope `prototypeRequests` to the signed-in owner (AGENTS.md); F19.4 cannot check ownership and never loads or infers prototypes. They are passed to the metrics whose request populations can count them (Request Volume, Request Turnaround Time, Approval Rate and the workload `pending_without_stage` report), have no stages, and are only ever counted under `prototype_request`.
+
+**Errors.** The calculators throw, rather than return a value, for programming errors: a `RangeError` for invalid period bounds (even when the load is blocked or cancelled), and an `Error` when ids repeat, which a validated F19.3 load cannot contain.
+
+**Not resolved by F19.4.** The limitations in section 7 still apply to every result. F19.4 reports their effects as data-quality counts; it does not repair data, reconstruct past stages or make the reads atomic.
+
+Validate the calculations with:
+
+```sh
+npx vitest run src/lib/efficiency-stats.test.ts src/lib/efficiency-population.test.ts src/lib/efficiency-population-classification.test.ts src/lib/efficiency-request-volume.test.ts src/lib/efficiency-stage-processing-time.test.ts src/lib/efficiency-queue-throughput.test.ts src/lib/efficiency-decision-metrics.test.ts src/lib/efficiency-active-queue-workload.test.ts src/lib/efficiency-analytics.test.ts
+```
+
+### 8.4 F19.5.4 security hardening (implemented)
+
+Two migrations close integrity gaps found by the F19.5.4 audit. Design, privilege matrix and verification: `docs/F19_Security_Hardening.md`.
+
+- `20261119120100_f19_5_4_1_security_hardening.sql`: the database assigns `financial_requests.created_at` on insert and rejects every change, for every role and status; API-role privileges RLS cannot govern (TRUNCATE, TRIGGER, REFERENCES, MAINTAIN) and unused direct writes are revoked on the F19 tables.
+- `20261119130000_f19_5_4_2_event_provenance.sql`: clients cannot write database-generated `workflow_events` types or sources, and client events take their actor and time from the database; future tables no longer grant DELETE to `authenticated` by default.
+
+**Effect on the metrics.** `created_at` written after the first migration is trusted, so `created_at_client_writable` is replaced by `created_at_unverified_before_hardening`, which covers only values stored before it (catalog `2026-11-19.2`). Formulas, populations and codes are unchanged. `workflow_events` is still not a source.
+
 ## 9. Versioning
 
 - `EFFICIENCY_METRICS_VERSION` uses the `RULES_VERSION` format `YYYY-MM-DD.N`, starting at `2026-11-18.1`.
@@ -711,10 +853,12 @@ npx vitest run src/lib/efficiency-data.test.ts src/lib/efficiency-data-loader.te
 - The version identifies the catalog as committed. Changes made before the first commit are part of `2026-11-18.1`; every change after it requires a bump.
 - F19.4 results are only comparable within one version.
 
-| Version        | Change                                                                                                                                                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `2026-11-18.1` | Initial F19.1 catalog.                                                                                                                                                                                                    |
-| `2026-11-18.2` | F19.3 Checkpoint 0: `approval_stage_tracking.workflow_revision` added to `SOURCE_FIELDS` and the decision metrics; decisive stage is the highest `(workflow_revision, stage_order)`; `non_atomic_reads` limitation added. |
+| Version        | Change                                                                                                                                                                                                                                                                                                            |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `2026-11-18.1` | Initial F19.1 catalog.                                                                                                                                                                                                                                                                                            |
+| `2026-11-18.2` | F19.3 Checkpoint 0: `approval_stage_tracking.workflow_revision` added to `SOURCE_FIELDS` and the decision metrics; decisive stage is the highest `(workflow_revision, stage_order)`; `non_atomic_reads` limitation added.                                                                                         |
+| `2026-11-19.1` | F19.4.0: `unrecognized_stage_status` code and `APPROVAL_STAGE_STATUSES` added; the new condition follows `skipped_or_cancelled_stage` in Stage Processing Time and Queue Throughput; `terminal_stage_invalid` and condition 6 now cover integer ordering, ties at the highest pair, and null or non-integer keys. |
+| `2026-11-19.2` | F19.5.4.2: `created_at_client_writable` replaced by `created_at_unverified_before_hardening` (not resolvable), because migration `20261119120100_f19_5_4_1_security_hardening` makes `created_at` database-assigned and immutable; only values stored before it remain unverifiable.                              |
 
 - No automated check enforces the bump; reviewers must confirm it.
 - Update this document in the same change.
@@ -745,5 +889,6 @@ The tests check:
 - workflow revisions: the decisive stage is named by the `(workflow_revision, stage_order)` pair everywhere and never by `stage_order` alone, the decision metrics read both fields, and turnaround keeps the original `created_at` basis, including pre-amendment time (section 3.10, section 5.8);
 - that `non_atomic_reads` applies to every metric, separates pagination (all metrics) from cross-table timing (metrics that read both tables), and states that matching counts do not show stable rows or a consistent snapshot;
 - that the decisive stage must be completed, while cancelled stages still contribute elapsed time to turnaround;
+- that the decisive stage rule states integer ordering, ties and invalid keys, and that `unrecognized_stage_status` follows `skipped_or_cancelled_stage` in both stage populations, with `APPROVAL_STAGE_STATUSES` matching the database `CHECK` constraint;
 - that the section 7 table and the section 3.4 source list match the catalog;
 - module boundaries: the catalog imports only `deep-freeze.ts`, F18 modules do not import it, and it exports no functions.

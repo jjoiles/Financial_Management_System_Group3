@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Database } from "@/integrations/supabase/types";
 import * as catalogModule from "./efficiency-metrics";
 import {
+  APPROVAL_STAGE_STATUSES,
   DATA_QUALITY_CHECKS,
   DATA_QUALITY_CODES,
   DATA_QUALITY_RULES,
@@ -83,6 +84,14 @@ function primaryExclusion(
   );
 }
 
+/** The documentation section (### heading) that names the metric id. */
+function section(id: EfficiencyMetricId): string {
+  const sections = DOC.split(/^(?=### )/m);
+  const found = sections.find((text) => text.split("\n")[0].includes(`\`${id}\``));
+  if (!found) throw new Error(`No documentation section for ${id}`);
+  return found;
+}
+
 function isDeeplyFrozen(value: unknown): boolean {
   if (value === null || typeof value !== "object") return true;
   return Object.isFrozen(value) && Object.values(value).every(isDeeplyFrozen);
@@ -103,7 +112,7 @@ const TERMINAL_EXCLUSIONS: DataQualityCode[] = [
 ];
 
 const TERMINAL_LIMITATIONS: KnownLimitationId[] = [
-  "created_at_client_writable",
+  "created_at_unverified_before_hardening",
   "stage_rows_directly_writable",
   "status_update_bypasses_stage_closure",
   "historical_stage_gaps",
@@ -118,6 +127,7 @@ const STAGE_PROCESSING_EXPECTED = {
     "orphaned_active_stage",
     "in_progress_stage",
     "skipped_or_cancelled_stage",
+    "unrecognized_stage_status",
     "stage_missing_completed_at",
     "invalid_stage_timestamps",
   ] as DataQualityCode[],
@@ -167,7 +177,7 @@ const EXPECTED_RULES: Record<
     requiredReads: ["financial_requests"],
     stageReadCoverage: null,
     limitations: [
-      "created_at_client_writable",
+      "created_at_unverified_before_hardening",
       "unbounded_reads",
       "non_atomic_reads",
       "role_scoped_visibility",
@@ -199,6 +209,7 @@ const EXPECTED_RULES: Record<
     subject: "stage",
     exclusions: [
       "skipped_or_cancelled_stage",
+      "unrecognized_stage_status",
       "stage_missing_completed_at",
       "invalid_stage_timestamps",
     ],
@@ -268,6 +279,7 @@ describe("catalog identity and structure", () => {
       TERMINAL_REQUEST_STATUSES,
       PENDING_REQUEST_STATUSES,
       EXCLUDED_REQUEST_STATUSES,
+      APPROVAL_STAGE_STATUSES,
     ]) {
       expect(isDeeplyFrozen(value)).toBe(true);
     }
@@ -685,6 +697,74 @@ describe("data-quality precedence", () => {
     }
   });
 
+  it("places unrecognized_stage_status immediately after skipped_or_cancelled_stage in both stage populations", () => {
+    const throughput = EFFICIENCY_METRICS.queue_throughput.population;
+    for (const population of [
+      EFFICIENCY_METRICS.stage_processing_time_average.population,
+      EFFICIENCY_METRICS.stage_processing_time_median.population,
+      throughput,
+    ]) {
+      const codes = conditionCodes(population);
+      expect(codes.indexOf("unrecognized_stage_status")).toBe(
+        codes.indexOf("skipped_or_cancelled_stage") + 1,
+      );
+      expect(codes.indexOf("unrecognized_stage_status")).toBeLessThan(
+        codes.indexOf("stage_missing_completed_at"),
+      );
+    }
+    for (const metric of metrics()) {
+      const used = exclusionCodes(metric).includes("unrecognized_stage_status");
+      expect(used).toBe(
+        metric.family === "stage_processing_time" || metric.id === "queue_throughput",
+      );
+    }
+  });
+
+  it("resolves unrecognized-status precedence: earlier status checks win, later completion checks lose", () => {
+    const stages = EFFICIENCY_METRICS.stage_processing_time_average.population;
+    const throughput = EFFICIENCY_METRICS.queue_throughput.population;
+    const cases: [MetricPopulation, DataQualityCode[], DataQualityCode][] = [
+      // An unrecognized status that is also missing completed_at or has bad timestamps.
+      [
+        stages,
+        ["unrecognized_stage_status", "stage_missing_completed_at"],
+        "unrecognized_stage_status",
+      ],
+      [
+        stages,
+        ["unrecognized_stage_status", "invalid_stage_timestamps"],
+        "unrecognized_stage_status",
+      ],
+      [
+        throughput,
+        ["unrecognized_stage_status", "stage_missing_completed_at"],
+        "unrecognized_stage_status",
+      ],
+      [
+        throughput,
+        ["unrecognized_stage_status", "invalid_stage_timestamps"],
+        "unrecognized_stage_status",
+      ],
+      // Statuses the earlier conditions recognize keep their own code.
+      [stages, ["orphaned_active_stage", "unrecognized_stage_status"], "orphaned_active_stage"],
+      [stages, ["in_progress_stage", "unrecognized_stage_status"], "in_progress_stage"],
+      [
+        stages,
+        ["skipped_or_cancelled_stage", "unrecognized_stage_status"],
+        "skipped_or_cancelled_stage",
+      ],
+      [
+        throughput,
+        ["skipped_or_cancelled_stage", "unrecognized_stage_status"],
+        "skipped_or_cancelled_stage",
+      ],
+      [throughput, ["unrecognized_stage_status"], "unrecognized_stage_status"],
+    ];
+    for (const [population, failing, primary] of cases) {
+      expect(primaryExclusion(population, new Set(failing))).toBe(primary);
+    }
+  });
+
   it("orders conditions so later checks can rely on earlier ones", () => {
     const terminal = conditionCodes(TRACKED_TERMINAL_POPULATION);
     const before = (codes: DataQualityCode[], a: DataQualityCode, b: DataQualityCode) =>
@@ -694,6 +774,8 @@ describe("data-quality precedence", () => {
     before(terminal, "completed_status", "untracked_terminal_request");
     const stages = conditionCodes(EFFICIENCY_METRICS.stage_processing_time_average.population);
     before(stages, "orphaned_active_stage", "in_progress_stage");
+    before(stages, "skipped_or_cancelled_stage", "unrecognized_stage_status");
+    before(stages, "unrecognized_stage_status", "stage_missing_completed_at");
   });
 
   it("keeps flags and separate reports out of exclusions, with matching treatments", () => {
@@ -930,6 +1012,42 @@ describe("workflow revisions", () => {
     expect(DOC).toMatch(/part of the turnaround and must be included for the identity to hold/);
   });
 
+  it("defines integer ordering, ties and invalid keys for the decisive stage", () => {
+    const texts = [
+      DATA_QUALITY_CHECKS.terminal_stage_invalid.description,
+      TRACKED_TERMINAL_POPULATION.conditions[5].requirement,
+    ];
+    for (const text of texts) {
+      expect(text).toMatch(/compared as integers, revision first/);
+      expect(text).toMatch(/two or more stages share the highest pair/);
+      expect(text).toMatch(/null or non-integer workflow_revision or stage_order/);
+    }
+    expect(DATA_QUALITY_CHECKS.terminal_stage_invalid.description).toMatch(
+      /revision 10 is newer than revision 9/,
+    );
+    expect(TRACKED_TERMINAL_POPULATION.conditions[5].exclusion).toBe("terminal_stage_invalid");
+    const catalogComments = read("./efficiency-metrics.ts").replace(/\n\s*\* ?/g, " ");
+    expect(catalogComments).toMatch(
+      /compared as integers, not as text, so revision 10 is newer than revision 9/,
+    );
+    expect(DOC).toMatch(
+      /compared as integers, not as text, so revision 10 is newer than revision 9/,
+    );
+    expect(DOC).toMatch(/two or more of its stages share the highest pair/);
+    expect(DOC).toMatch(/null or non-integer `workflow_revision` or `stage_order`/);
+    for (const id of ["request_turnaround_time_average", "approval_rate"] as const) {
+      const row = section(id)
+        .split("\n")
+        .find(
+          (line) =>
+            line.endsWith("`terminal_stage_invalid`             |") ||
+            /`terminal_stage_invalid`\s*\|$/.test(line),
+        );
+      expect(row).toMatch(/compared as integers/);
+      expect(row).toMatch(/Ties at the highest pair and null or non-integer keys/);
+    }
+  });
+
   it("documents the amended-request worked example", () => {
     expect(DOC).toMatch(/### 5\.\d+ Amended request/);
     expect(DOC).toMatch(/revision 2/);
@@ -939,6 +1057,48 @@ describe("workflow revisions", () => {
 // ---------------------------------------------------------------------------
 // Sources and limitations
 // ---------------------------------------------------------------------------
+
+describe("stage statuses", () => {
+  const migration = (name: string) => read(`../../supabase/migrations/${name}`);
+
+  it("lists exactly the statuses the approval_stage_tracking CHECK constraint allows", () => {
+    const f16 = migration("20261113160000_f16_sla_stage_tracking.sql");
+    const check = f16.match(
+      /status TEXT NOT NULL DEFAULT 'active'\s*CHECK\s*\(\s*status IN \(([^)]*)\)/,
+    );
+    expect(check).not.toBeNull();
+    const allowed = [...(check?.[1] ?? "").matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
+    expect([...APPROVAL_STAGE_STATUSES]).toEqual(allowed);
+    // F19.2 pairs each status with completed_at and adds no other status.
+    const f19_2 = migration("20261119030549_f19_2_workflow_integrity.sql");
+    const paired =
+      f19_2.split("approval_stage_tracking_status_completed_check")[1]?.split(";")[0] ?? "";
+    const named = new Set([...paired.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]));
+    expect([...named].sort()).toEqual([...APPROVAL_STAGE_STATUSES].sort());
+  });
+
+  it("excludes an unrecognized or null status, never treating it as completed", () => {
+    const check = DATA_QUALITY_CHECKS.unrecognized_stage_status;
+    expect(check).toMatchObject({
+      code: "unrecognized_stage_status",
+      subject: "stage",
+      treatment: "excluded",
+    });
+    expect(check.description).toMatch(/null or not one of APPROVAL_STAGE_STATUSES/);
+    expect(check.description).toMatch(/never treated as completed/);
+    expect(check.description).toMatch(/stage_field_missing/);
+    const condition = EFFICIENCY_METRICS.queue_throughput.population.conditions.find(
+      (c) => c.exclusion === "unrecognized_stage_status",
+    );
+    expect(condition?.requirement).toMatch(
+      /one of APPROVAL_STAGE_STATUSES \(active, completed, skipped, cancelled\)/,
+    );
+    // A missing status column stays a load-integrity error.
+    expect(LOAD_INTEGRITY_ERROR_CODES as readonly string[]).not.toContain(
+      "unrecognized_stage_status",
+    );
+  });
+});
 
 describe("source fields", () => {
   const referencedFields = (metric: EfficiencyMetricDefinition) => [
@@ -993,6 +1153,9 @@ describe("source fields", () => {
       if (codes.includes("invalid_created_at")) {
         expect(has(metric, "financial_requests", "created_at")).toBe(true);
       }
+      if (codes.includes("unrecognized_stage_status")) {
+        expect(has(metric, "approval_stage_tracking", "status")).toBe(true);
+      }
     }
   });
 });
@@ -1013,7 +1176,6 @@ describe("known limitations", () => {
     expect(
       KNOWN_LIMITATION_IDS.filter((id) => KNOWN_LIMITATIONS[id].resolvedBy === "F19.2"),
     ).toEqual([
-      "created_at_client_writable",
       "stage_rows_directly_writable",
       "status_update_bypasses_stage_closure",
       "stage_constraints_unenforced",
@@ -1021,6 +1183,9 @@ describe("known limitations", () => {
     ]);
     expect(KNOWN_LIMITATIONS.unbounded_reads.resolvedBy).toBe("F19.3");
     expect(KNOWN_LIMITATIONS.historical_stage_gaps.resolvedBy).toBe("not-resolvable");
+    expect(KNOWN_LIMITATIONS.created_at_unverified_before_hardening.resolvedBy).toBe(
+      "not-resolvable",
+    );
   });
 
   it("applies non_atomic_reads to every metric, separating pagination from cross-table timing", () => {
@@ -1084,8 +1249,28 @@ describe("known limitations", () => {
       const readsCreatedAt = metric.sources.some(
         (source) => source.table === "financial_requests" && source.field === "created_at",
       );
-      expect(metric.limitations.includes("created_at_client_writable")).toBe(readsCreatedAt);
+      expect(metric.limitations.includes("created_at_unverified_before_hardening")).toBe(
+        readsCreatedAt,
+      );
     }
+  });
+
+  it("agrees with the migration that makes created_at database-controlled and immutable", () => {
+    expect([...KNOWN_LIMITATION_IDS] as string[]).not.toContain("created_at_client_writable");
+    const limitation = KNOWN_LIMITATIONS.created_at_unverified_before_hardening;
+    const migrationName = "20261119120100_f19_5_4_1_security_hardening";
+    expect(limitation.description).toContain(migrationName);
+    expect(limitation.description).toMatch(
+      /assigns created_at on insert and rejects every later change/,
+    );
+    expect(limitation.description).toMatch(/cannot be verified/);
+    const migration = read(`../../supabase/migrations/${migrationName}.sql`);
+    expect(migration).toMatch(
+      /CREATE TRIGGER f19_assign_request_created_at\s+BEFORE INSERT ON public\.financial_requests/,
+    );
+    expect(migration).toMatch(
+      /CREATE TRIGGER zz_f19_guard_request_created_at\s+BEFORE INSERT OR UPDATE ON public\.financial_requests/,
+    );
   });
 });
 
@@ -1094,12 +1279,6 @@ describe("known limitations", () => {
 // ---------------------------------------------------------------------------
 
 describe("documentation agrees with the catalog", () => {
-  const section = (id: EfficiencyMetricId): string => {
-    const sections = DOC.split(/^(?=### )/m);
-    const found = sections.find((text) => text.split("\n")[0].includes(`\`${id}\``));
-    if (!found) throw new Error(`No documentation section for ${id}`);
-    return found;
-  };
   const docConditionCodes = (text: string) =>
     [...text.matchAll(/^\|\s*\d+\s*\|.*\|\s*`([a-z_]+)`\s*\|\s*$/gm)].map((match) => match[1]);
 
@@ -1203,7 +1382,10 @@ describe("documentation agrees with the catalog", () => {
     // Join the catalog's JSDoc lines so wrapping does not matter.
     const catalogComments = read("./efficiency-metrics.ts").replace(/\n\s*\* ?/g, " ");
     expect(catalogComments).toContain(policy);
-    expect(EFFICIENCY_METRICS_VERSION).toBe("2026-11-18.2");
+    expect(EFFICIENCY_METRICS_VERSION).toBe("2026-11-19.2");
+    expect(versioning).toMatch(
+      new RegExp(`^\\| \`${EFFICIENCY_METRICS_VERSION.replace(/\./g, "\\.")}\` +\\|`, "m"),
+    );
   });
 
   it("lists every known limitation in the section 7 table with its resolution", () => {
