@@ -117,6 +117,14 @@ export type FlowResult =
   | { ok: true; httpStatus: number; attempts: number; runId: string | null }
   | {
       ok: false;
+      uncertain: true;
+      httpStatus: number | null;
+      attempts: number;
+      error: string;
+    }
+  | {
+      ok: false;
+      uncertain?: false;
       httpStatus: number | null;
       attempts: number;
       error: string;
@@ -145,6 +153,8 @@ export function isAllowedFlowUrl(url: string) {
 
 // POSTs the payload. Retries network errors, timeouts, 429, and 5xx with
 // backoff. 4xx (except 429) is a configuration problem and is not retried.
+// It counts as a definite rejection only when no earlier attempt was
+// ambiguous (transport failure, timeout, or 5xx).
 export async function postToFlow(payload: FlowPayload, options: PostOptions): Promise<FlowResult> {
   const {
     url,
@@ -175,6 +185,8 @@ export async function postToFlow(payload: FlowPayload, options: PostOptions): Pr
 
   let lastError = "Unknown error";
   let lastStatus: number | null = null;
+  let sawTransportFailure = false;
+  let sawServerError = false;
   const maxAttempts = retryDelaysMs.length + 1;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -197,15 +209,34 @@ export async function postToFlow(payload: FlowPayload, options: PostOptions): Pr
         };
       }
       lastError = `Flow returned HTTP ${res.status}.`;
+      if (res.status >= 500) {
+        sawServerError = true;
+      }
       if (!retryable(res.status)) {
+        // A rejection only proves this attempt was refused. If an earlier
+        // attempt timed out, failed in transport, or returned 5xx, that
+        // attempt may still have started the flow, so the outcome stays
+        // ambiguous. The receiving flow is not verified to deduplicate on
+        // the idempotency key.
+        if (sawTransportFailure || sawServerError) {
+          return {
+            ok: false,
+            uncertain: true,
+            httpStatus: res.status,
+            attempts: attempt,
+            error: `${lastError} An earlier attempt may have been delivered.`,
+          };
+        }
         return {
           ok: false,
+          uncertain: false,
           httpStatus: res.status,
           attempts: attempt,
           error: lastError,
         };
       }
     } catch (err) {
+      sawTransportFailure = true;
       lastError =
         err instanceof Error && err.name === "AbortError"
           ? `Flow did not respond within ${timeoutMs / 1000}s.`
@@ -216,8 +247,19 @@ export async function postToFlow(payload: FlowPayload, options: PostOptions): Pr
     if (attempt < maxAttempts) await sleep(retryDelaysMs[attempt - 1]);
   }
 
+  if (sawTransportFailure || sawServerError) {
+    return {
+      ok: false,
+      uncertain: true,
+      httpStatus: lastStatus,
+      attempts: maxAttempts,
+      error: lastError,
+    };
+  }
+
   return {
     ok: false,
+    uncertain: false,
     httpStatus: lastStatus,
     attempts: maxAttempts,
     error: lastError,

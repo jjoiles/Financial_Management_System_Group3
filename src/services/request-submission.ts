@@ -39,6 +39,7 @@ export type SubmissionOutcome =
 const workflowModeLabel: Record<WorkflowMode, string> = {
   power_automate: "Started in Power Automate",
   simulated: "Simulated (flow not connected)",
+  ambiguous: "Start status unknown (retry safe)",
   failed: "Not started",
 };
 

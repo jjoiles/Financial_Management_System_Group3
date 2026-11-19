@@ -64,3 +64,15 @@ Generated application types were refreshed by the migration tool but have no net
 - The hosted backend does not contain the optional F16 approval-stage table referenced by existing feature-branch code. Existing non-blocking request-stage handling and SLA error behavior are preserved; installing unrelated F16 migrations is outside F12.
 - UI access-failure testing used a controlled denied read response; it is not a full two-account RLS test. Actual Requester RPC checks and grant/RLS inspection were also verified without elevated access.
 - No GitHub issue-state update or merge was performed.
+
+## Post-integration security checks (2026-11-19)
+
+The results above are the original record, including the five hosted read-only SQL checks. This section adds a later run in a disposable database, after `origin/main` was merged into `feature/f19-efficiency-analytics` (HEAD `6d7aaa7`). It did not touch the hosted backend, and it does not repeat the browser, session or vitest checks above.
+
+- Environment: a new disposable container, `f12-phase2d-disposable-61577`, started from the local stack's Supabase Postgres image with a random password, no port mapping and no volume, accessed only through `docker exec`, and removed afterwards. The local development database was not connected to.
+- Script: the unmodified `verification/f12-security.sql`, run as `postgres`.
+- Variant A, all 16 `supabase/migrations` files in version order (through `20261119120000_f21_rbac_backend_authorization`, `20261119120100_f19_5_4_1_security_hardening` and `20261119130000_f19_5_4_2_event_provenance`): **5/5 passed**.
+- Variant B, the same database after also applying `drizzle/migrations/0000_f12_restore_self_scoped_authorization_helpers`, `0001` and `0002` in journal order: **5/5 passed**.
+- The five checks, passed in both variants: authenticated can execute role checks; authenticated can execute reviewer checks; anonymous cannot execute role checks; anonymous cannot execute reviewer checks; request and role tables retain row-level security.
+
+In Variant A the F12 drizzle migration was not applied, yet authenticated execution was allowed. This suggests a `supabase/migrations` file, probably upstream F21, now grants it. That is an inference; no run isolated which migration grants it. These runs check grants and RLS settings on a fresh schema; they do not show the hosted backend's current state.
