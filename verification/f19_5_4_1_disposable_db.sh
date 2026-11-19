@@ -29,7 +29,7 @@ set -euo pipefail
 
 IMAGE="${1:?usage: $0 <supabase-postgres-image>}"
 NAME="f19-5-4-1-disposable-$$"
-HARDENING="20261119120000_f19_5_4_1_security_hardening.sql"
+HARDENING="20261119120100_f19_5_4_1_security_hardening.sql"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MIGRATIONS="$ROOT/supabase/migrations"
 

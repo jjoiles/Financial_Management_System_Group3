@@ -1,5 +1,5 @@
 -- F19.5.4.1 security hardening regression checks
--- (supabase/migrations/20261119120000_f19_5_4_1_security_hardening.sql).
+-- (supabase/migrations/20261119120100_f19_5_4_1_security_hardening.sql).
 --
 -- DISPOSABLE DATABASE ONLY. Run through the runner, which starts a throwaway
 -- container, applies every migration, seeds pre-hardening history and then

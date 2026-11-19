@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 
 const MIGRATIONS_URL = new URL("../../../supabase/migrations/", import.meta.url);
 const GUARD_FILE = "20261119072711_f19_2_decision_status_guard.sql";
-const HARDENING_FILE = "20261119120000_f19_5_4_1_security_hardening.sql";
+const HARDENING_FILE = "20261119120100_f19_5_4_1_security_hardening.sql";
 
 const migrationFiles = readdirSync(MIGRATIONS_URL)
   .filter((name) => name.endsWith(".sql"))

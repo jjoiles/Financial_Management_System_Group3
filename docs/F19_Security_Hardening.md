@@ -2,7 +2,7 @@
 
 **Migrations:**
 
-- `supabase/migrations/20261119120000_f19_5_4_1_security_hardening.sql` (F19.5.4.1: S1, S2, S3)
+- `supabase/migrations/20261119120100_f19_5_4_1_security_hardening.sql` (F19.5.4.1: S1, S2, S3)
 - `supabase/migrations/20261119130000_f19_5_4_2_event_provenance.sql` (F19.5.4.2: event provenance, default DELETE)
 
 **Source findings:** F19.5.4 historical workflow and security audit

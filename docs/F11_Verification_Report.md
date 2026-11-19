@@ -147,8 +147,9 @@ On a database without the guard, the guard-specific assertions fail (`FAIL: guar
   - no fixture users, reviewer role row, requests, stages or fixture workflow events remained;
   - the totals were back exactly at the baseline: 2 auth users, 1 user role, 7 requests, 9 stages and 29 workflow events;
   - the F19.2 guard was still installed and its trigger still enabled, and the migration history was still 13 migrations, latest `20261119072711`.
-- The F11 migrations were not permanently installed, migrations `20261119120000` and `20261119130000` were not applied, and the hosted database was not touched.
+- The F11 migrations were not permanently installed, the F19.5.4 migrations (`20261119120100_f19_5_4_1_security_hardening` and `20261119130000_f19_5_4_2_event_provenance`) were not applied, and the hosted database was not touched.
+- Note on numbering: at the time of this run the F19.5.4.1 migration was numbered `20261119120000`. It was later renumbered to `20261119120100` to avoid a version collision with the upstream F21 migration `20261119120000_f21_rbac_backend_authorization`. Its content did not change.
 
 #### Not yet verified
 
-- Not run against the later migrations `20261119120000` and `20261119130000`, and not yet run on the privileged CI connection.
+- Not run against the later migrations `20261119120000_f21_rbac_backend_authorization` (upstream F21), `20261119120100_f19_5_4_1_security_hardening` and `20261119130000_f19_5_4_2_event_provenance`, and not yet run on the privileged CI connection.

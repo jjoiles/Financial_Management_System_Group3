@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
  */
 
 const MIGRATIONS_URL = new URL("../../../supabase/migrations/", import.meta.url);
-const HARDENING_FILE = "20261119120000_f19_5_4_1_security_hardening.sql";
+const HARDENING_FILE = "20261119120100_f19_5_4_1_security_hardening.sql";
 const PROVENANCE_FILE = "20261119130000_f19_5_4_2_event_provenance.sql";
 
 const migrationFiles = readdirSync(MIGRATIONS_URL)

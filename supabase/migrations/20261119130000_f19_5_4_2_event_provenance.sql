@@ -2,7 +2,7 @@
 -- F19.5.4.2: WORKFLOW EVENT PROVENANCE + DEFAULT DELETE PRIVILEGE
 -- ============================================================
 --
--- Follows 20261119120000_f19_5_4_1_security_hardening.sql.
+-- Follows 20261119120100_f19_5_4_1_security_hardening.sql.
 -- Design and verification: docs/F19_Security_Hardening.md.
 --
 -- 1. Workflow event provenance
