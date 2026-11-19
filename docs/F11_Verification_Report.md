@@ -152,4 +152,19 @@ On a database without the guard, the guard-specific assertions fail (`FAIL: guar
 
 #### Not yet verified
 
+As recorded before `origin/main` was merged. The first item was later covered in a disposable database; see "Post-integration run" below.
+
 - Not run against the later migrations `20261119120000_f21_rbac_backend_authorization` (upstream F21), `20261119120100_f19_5_4_1_security_hardening` and `20261119130000_f19_5_4_2_event_provenance`, and not yet run on the privileged CI connection.
+
+#### Post-integration run (2026-11-19, HEAD `6d7aaa7`)
+
+This run was made after `origin/main` was merged into `feature/f19-efficiency-analytics` (merge commit `6d7aaa7`). The runs above are unchanged records.
+
+- Environment: a new disposable container, `f11-phase2c-disposable-61325`, started from the local stack's Supabase Postgres image with a random password, no port mapping and no volume, accessed only through `docker exec`, and removed afterwards. The local development database and the hosted database were not connected to.
+- Schema: all 16 `supabase/migrations` files applied in version order, each in its own transaction. The last four were `20261119072711_f19_2_decision_status_guard`, `20261119120000_f21_rbac_backend_authorization`, `20261119120100_f19_5_4_1_security_hardening` and `20261119130000_f19_5_4_2_event_provenance`.
+- State before the suite: F11 table absent; 0 users, roles, requests, stages and workflow events.
+- Command: the wrapper shown under "Latest run", unchanged, aimed at the disposable container. It applied `drizzle/migrations/0001` and `0002` inside the suite's transaction, removed only the suite's initial `BEGIN;` and kept its final `ROLLBACK;`.
+- Result: `psql` exited 0 and printed `F11 integration assertions passed`, so none of the suite's 16 failure checks fired, including the approval, rejection and guard checks. The only warning was the suite's own injected notification failure (`SQLSTATE 23514`).
+- After the rollback: the F11 table, trigger function and trigger were absent, and no users, roles, requests, stages, workflow events or fixture users remained (all 0, as before the run).
+
+This shows the suite passes with F19.2, F21, F19.5.4.1 and F19.5.4.2 applied in that order. It does not cover the hosted database, which lacked the F16 objects the suite needs when last checked (see Limitations), or the privileged CI connection, where the suite has still not been run.

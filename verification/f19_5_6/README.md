@@ -376,3 +376,65 @@ Sections 1–8 are unchanged records of earlier states. This section records wha
 **Existing local database.** None of the work in this section applied a migration to it or changed its data. `20261119120100` and `20261119130000` are still not applied there.
 
 **Still required after `main` is merged** (which brings upstream F21, `20261119120000_f21_rbac_backend_authorization.sql`): rerun the F19.5.4 disposable runner, F19.5.5 database mode and the F11 suite, then the full test suite, type check and lint.
+
+## 10. Addendum: verification after integrating `origin/main` (2026-11-19)
+
+Section 9 is kept as written. Its statements that the F21 order was not exercised, that F19.5.5 database mode had not been rerun, and that reruns were still required after merging `main` describe the state before this section. The runs below cover those items.
+
+**Integration.** `origin/main` was merged into `feature/f19-efficiency-analytics` as merge commit `6d7aaa7`, with no conflicts. This brought in the upstream F21 migration `20261119120000_f21_rbac_backend_authorization.sql`. `95312c7` (test(f19.5): add independent metric verification suite) was committed before the merge. Nothing has been pushed. Every result below was produced at HEAD `6d7aaa7`.
+
+**Migration order.** `supabase/migrations` now holds 16 files. Sorted by version, the last four are `20261119072711_f19_2_decision_status_guard`, `20261119120000_f21_rbac_backend_authorization`, `20261119120100_f19_5_4_1_security_hardening` and `20261119130000_f19_5_4_2_event_provenance`. Each disposable run below applied all 16 in that order, each in its own transaction, so F21 was applied before both F19.5.4 migrations.
+
+**Database safety.** All four database runs (Phases 2A–2D) used a new disposable container started from the local stack's Supabase Postgres image, with a random password, no port mapping and no volume, accessed only through `docker exec`, and removed on exit. The local development database and the hosted database were not connected to or changed. No persistent database URL or credential was used.
+
+### Phase 1: repository checks
+
+- `npx vitest run`: 1,376 passed, 0 failed, 12 skipped (43 files). The 12 skipped tests are the F19.5.5 database-mode tests, which run only when their output directory is supplied (Phase 2B).
+- `npx tsc --noEmit`: exit 0.
+- Type check of the verification TypeScript (4 files, scratch tsconfig): 0 errors.
+- ESLint: 953 errors and 10 warnings, all inherited. The pre-merge branch had 939 errors, upstream `main` 952 and the merge 953. No file has more problems than it had in both parents.
+- Prettier: the remaining warnings are in files inherited from upstream, plus existing formatting in `docs/F11_Verification_Report.md`.
+- `git diff --check`: clean.
+
+### Phase 2A: F19.5.4.1 / F19.5.4.2 disposable runner
+
+`verification/f19_5_4_1_disposable_db.sh`, container `f19-5-4-1-disposable-60488`. All 16 migrations applied in the order above. F19.5.4.1 passed sections 1–8, F19.5.4.2 passed sections 1–5. `f19_2_status_guard.sql`, `f19_2_regression.sql` and `f19_2_status_guard_concurrency.sh` passed, and the runner reported `F19.5.4.1 and F19.5.4.2 disposable-database verification passed.` The container was removed.
+
+This is the first run of the F19.5.4 checks with F21 applied before them.
+
+### Phase 2B: F19.5.5 database mode
+
+`verification/f19_5_5/db/run.sh`, container `f19-5-5-disposable-60891`. The runner recorded 16 migrations, latest `20261119130000`, and found the F19.2 and F19.5.4 triggers present. It seeded and exported scenarios S5 (6 requests, 6 stages), S58 (1 request, 3 stages) and SX (15 requests, 15 stages), and ran the independent F19.5.2 SQL for October, November and December 2026.
+
+- Vitest in database mode: 72 of 72 tests passed (1 file).
+- The strict parser accepted all 729 result rows (81 per SQL run; 3 scenarios × 3 periods).
+- 69 comparison runs, 14,997 comparisons, 0 mismatches. 1,062 of the comparisons were SQL results against hand-computed values.
+- 12 fresh output files were written (3 exports and 9 SQL result files). The container was removed before vitest ran.
+
+This is the first database-mode run since the F19.5.4.1 migration was renumbered to `20261119120100`, and the first with F21 applied. The outdated database-mode status statement in `verification/f19_5_5/README.md` has since been corrected to reflect the successful Phase 2B rerun.
+
+### Phase 2C: F11 notification suite
+
+Scratchpad helper (not a repository file), container `f11-phase2c-disposable-61325`. After the 16 migrations, the documented F11 wrapper ran unchanged against the container: one transaction applying `drizzle/migrations/0001` and `0002`, then `verification/f11-notifications.sql` with its `BEGIN;` line removed and its final `ROLLBACK;` kept.
+
+- `psql` exited 0 and printed `F11 integration assertions passed`, so none of the suite's 16 failure checks fired. The only warning was the suite's own injected notification failure (`SQLSTATE 23514`).
+- After the rollback, the F11 table, function and trigger were absent, and no users, roles, requests, stages, events or fixture users remained (all counts 0, the same as before the run).
+- The container was removed.
+
+Details are in `docs/F11_Verification_Report.md`.
+
+### Phase 2D: F12 security checks
+
+Scratchpad helper, container `f12-phase2d-disposable-61577`. The unmodified `verification/f12-security.sql` was run twice:
+
+- Variant A, the 16 `supabase/migrations` only: 5 of 5 checks passed.
+- Variant B, the same database after also applying `drizzle/migrations/0000`, `0001` and `0002` in journal order: 5 of 5 checks passed.
+
+The container was removed. In Variant A, the F12 drizzle migration `0000` was not applied, yet authenticated execution of the role helpers was allowed. That suggests a later `supabase/migrations` file, probably F21, grants it. This is an inference: no run isolated which migration is responsible. Details are in `docs/F12_Verification_Report.md`.
+
+### Not covered by these runs
+
+- The hosted database. None of these runs touched it.
+- The local development database. It was not connected to during this work; when last inspected (§9) it had 13 migrations and none of F21, `20261119120100` or `20261119130000`.
+- CI. Nothing was run on the privileged CI connection.
+- Browser or UI checks.

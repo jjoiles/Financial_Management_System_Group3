@@ -87,7 +87,9 @@ A mutation check was run on a copy of `scenarios.ts` with five values deliberate
 
 No discrepancy was found between the specification examples, the catalog and the implementation.
 
-**Later changes (after the runs above).** Scenario T-DS was added, `flattenSql` was made strict, and `db/seed.sql` gained its disposable-only guard. In TypeScript mode the suite then had 60 passing tests and 12 skipped database-mode tests. The saved output of the second database-mode run was re-parsed with the strict parser (no database involved): 72 tests passed, with 1,062 SQL-vs-hand comparisons and 0 mismatches; the increase from 1,026 is the stage-time unknown group, which is now compared. A new database-mode run has not been made since the F19.5.4.1 migration was renumbered to `20261119120100`.
+**Later changes (after the runs above).** Scenario T-DS was added, `flattenSql` was made strict, and `db/seed.sql` gained its disposable-only guard. In TypeScript mode the suite then had 60 passing tests and 12 skipped database-mode tests. The saved output of the second database-mode run was re-parsed with the strict parser (no database involved): 72 tests passed, with 1,062 SQL-vs-hand comparisons and 0 mismatches; the increase from 1,026 is the stage-time unknown group, which is now compared.
+
+**Database-mode rerun after integrating `origin/main` (2026-11-19, HEAD `6d7aaa7`).** After the F19.5.4.1 migration was renumbered to `20261119120100` and upstream F21 (`20261119120000_f21_rbac_backend_authorization`) was merged, `db/run.sh` was run again in a new disposable container (`f19-5-5-disposable-60891`), which was then removed. It applied all 16 migrations in sorted order, F21 before F19.5.4.1 and F19.5.4.2 (latest `20261119130000`). All 12 output files (3 exports and 9 SQL result files) came from that run's database. Database mode passed 72 of 72 tests. The strict parser accepted 729 result rows, and there were 14,997 comparisons with 0 mismatches, 1,062 of them SQL vs hand. The table above is unchanged and still records the earlier runs. The full record is in §10 of `verification/f19_5_6/README.md`.
 
 ### Observations (not discrepancies)
 
