@@ -485,4 +485,170 @@ export function buildUnauthorizedAccessResponse(params: {
   };
 }
 
+// ---------------------------------------------------------------------------
+// F21.4: Back-End / Data Authorization (F21.4.1, F21.4.2, F21.4.3)
+// ---------------------------------------------------------------------------
+
+export type BackendAuthorizationRequest = {
+  authenticatedUid: string | null | undefined;
+  claimedActorUid?: string | null | undefined;
+  userRoles: readonly unknown[] | null | undefined;
+  permission: RbacPermission;
+  resourceOwnerUid?: string | null | undefined;
+};
+
+export type BackendAuthorizationDecision =
+  | {
+      authorized: true;
+      boundUid: string;
+      permission: RbacPermission;
+    }
+  | {
+      authorized: false;
+      status: 401 | 403;
+      code:
+        | "UNAUTHENTICATED"
+        | "UID_SPOOFING_DETECTED"
+        | "PERMISSION_DENIED"
+        | "CROSS_USER_RESOURCE_DENIED";
+      message: string;
+    };
+
+const OWN_SCOPED_PERMISSIONS: Readonly<Partial<Record<RbacPermission, RbacPermission>>> = {
+  "requests:read_own": "requests:read_all",
+  "requests:update_own_pending": "requests:review_decision",
+  "attachments:upload_own": "attachments:read_all",
+  "attachments:read_own": "attachments:read_all",
+  "workflow_events:read_own": "workflow_events:read_all",
+};
+
+/**
+ * F21.4.1 & F21.4.2: Enforces backend/service-level permissions independent of
+ * front-end UI guards. Binds identity checks to `authenticatedUid` (equivalent
+ * to `auth.uid()`), detects payload/header UID spoofing attempts, and enforces
+ * resource-owner scoping.
+ */
+export function authorizeBackendOperation(
+  request: BackendAuthorizationRequest,
+): BackendAuthorizationDecision {
+  const authUid =
+    typeof request.authenticatedUid === "string" ? request.authenticatedUid.trim() : "";
+  if (!authUid) {
+    return {
+      authorized: false,
+      status: 401,
+      code: "UNAUTHENTICATED",
+      message: "Authenticated session (auth.uid()) is required for database operations.",
+    };
+  }
+
+  // F21.4.2 & F21.5.3: Block any request where the client payload claims a different userId
+  if (
+    request.claimedActorUid !== undefined &&
+    request.claimedActorUid !== null &&
+    request.claimedActorUid.trim() !== authUid
+  ) {
+    return {
+      authorized: false,
+      status: 403,
+      code: "UID_SPOOFING_DETECTED",
+      message: "Claimed actor user ID does not match the authenticated session identity.",
+    };
+  }
+
+  if (!hasPermission(request.userRoles, request.permission)) {
+    return {
+      authorized: false,
+      status: 403,
+      code: "PERMISSION_DENIED",
+      message: `Role lacks required backend permission "${request.permission}".`,
+    };
+  }
+
+  // Enforce owner-scoping when a resourceOwnerUid is supplied on an own-scoped operation
+  const ownerUid =
+    typeof request.resourceOwnerUid === "string" ? request.resourceOwnerUid.trim() : "";
+  if (ownerUid && ownerUid !== authUid && request.permission in OWN_SCOPED_PERMISSIONS) {
+    const elevatedOverride = OWN_SCOPED_PERMISSIONS[request.permission];
+    const hasElevatedOverride =
+      elevatedOverride !== undefined && hasPermission(request.userRoles, elevatedOverride);
+    if (!hasElevatedOverride) {
+      return {
+        authorized: false,
+        status: 403,
+        code: "CROSS_USER_RESOURCE_DENIED",
+        message: "Cannot access or modify another user's financial record or attachment.",
+      };
+    }
+  }
+
+  return {
+    authorized: true,
+    boundUid: authUid,
+    permission: request.permission,
+  };
+}
+
+/**
+ * F21.4.3: Restricts access to uploaded files and sensitive financial records.
+ * Verifies storage path ownership (`{ownerUid}/{requestId}/{fileName}`) or
+ * elevated reviewer/leadership/admin read privileges.
+ */
+export function authorizeFinancialRecordAndFileAccess(params: {
+  authenticatedUid: string | null | undefined;
+  userRoles: readonly unknown[] | null | undefined;
+  recordOwnerUid: string;
+  storagePath?: string;
+  mode: "read" | "upload";
+}): BackendAuthorizationDecision {
+  const authUid =
+    typeof params.authenticatedUid === "string" ? params.authenticatedUid.trim() : "";
+  if (!authUid) {
+    return {
+      authorized: false,
+      status: 401,
+      code: "UNAUTHENTICATED",
+      message: "Sign-in is required to access financial records or attachment files.",
+    };
+  }
+
+  // Verify storage path prefix matches recordOwnerUid and contains no path traversal
+  if (params.storagePath) {
+    const cleanPath = params.storagePath.trim();
+    if (cleanPath.includes("..") || !cleanPath.startsWith(`${params.recordOwnerUid}/`)) {
+      return {
+        authorized: false,
+        status: 403,
+        code: "CROSS_USER_RESOURCE_DENIED",
+        message: "Storage path does not belong to the authorized financial record owner.",
+      };
+    }
+  }
+
+  if (params.mode === "upload") {
+    if (params.recordOwnerUid !== authUid) {
+      return {
+        authorized: false,
+        status: 403,
+        code: "CROSS_USER_RESOURCE_DENIED",
+        message: "Users may only upload attachments to their own financial requests.",
+      };
+    }
+    return authorizeBackendOperation({
+      authenticatedUid: authUid,
+      userRoles: params.userRoles,
+      permission: "attachments:upload_own",
+      resourceOwnerUid: params.recordOwnerUid,
+    });
+  }
+
+  return authorizeBackendOperation({
+    authenticatedUid: authUid,
+    userRoles: params.userRoles,
+    permission: "attachments:read_own",
+    resourceOwnerUid: params.recordOwnerUid,
+  });
+}
+
+
 
