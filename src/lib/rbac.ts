@@ -385,3 +385,104 @@ export function validateControlledRoleAssignment(
   };
 }
 
+// ---------------------------------------------------------------------------
+// F21.3: Front-End Authorization (F21.3.1, F21.3.2, F21.3.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * F21.3.1: Checks whether a user with the provided roles is authorized to access
+ * a given application route pathname.
+ */
+export function canAccessRoute(
+  userRoles: readonly unknown[] | null | undefined,
+  pathname: string,
+): boolean {
+  const normalizedPath = pathname.trim().replace(/\/+$/, "") || "/";
+  if (normalizedPath === "/login") return true;
+
+  const requiredPermission = ROUTE_REQUIRED_PERMISSIONS[normalizedPath];
+  if (!requiredPermission) {
+    // Unknown protected route requires at least own-request read capability
+    return hasPermission(userRoles, "requests:read_own");
+  }
+  return hasPermission(userRoles, requiredPermission);
+}
+
+export type AuthorizedActionState = {
+  canCreateRequest: boolean;
+  canViewOwnRequests: boolean;
+  canViewAllRequests: boolean;
+  canReviewRequest: boolean;
+  canViewAnalytics: boolean;
+  canExportAnalyticsCsv: boolean;
+  canViewSlaDashboard: boolean;
+  canManageRoles: boolean;
+};
+
+/**
+ * F21.3.2: Computes front-end action visibility and enabled/disabled flags for
+ * the current user's roles so unauthorized buttons and controls are hidden or
+ * disabled consistently.
+ */
+export function getAuthorizedActionState(
+  userRoles: readonly unknown[] | null | undefined,
+): AuthorizedActionState {
+  return {
+    canCreateRequest: hasPermission(userRoles, "requests:create"),
+    canViewOwnRequests: hasPermission(userRoles, "requests:read_own"),
+    canViewAllRequests: hasPermission(userRoles, "requests:read_all"),
+    canReviewRequest: hasPermission(userRoles, "requests:review_decision"),
+    canViewAnalytics: hasPermission(userRoles, "analytics:view"),
+    canExportAnalyticsCsv: hasPermission(userRoles, "analytics:export_csv"),
+    canViewSlaDashboard: hasPermission(userRoles, "sla:view_dashboard"),
+    canManageRoles: hasPermission(userRoles, "roles:assign"),
+  };
+}
+
+export type UnauthorizedAccessResponse = {
+  status: 401 | 403;
+  code: "AUTHENTICATION_REQUIRED" | "INSUFFICIENT_ROLE_PERMISSIONS";
+  title: string;
+  message: string;
+  requiredPermission: RbacPermission | null;
+  redirectTo: "/login" | "/";
+};
+
+/**
+ * F21.3.3: Builds an explicit, user-facing unauthorized-access response when a
+ * user without sufficient permissions attempts to view a restricted page or
+ * invoke a restricted UI action.
+ */
+export function buildUnauthorizedAccessResponse(params: {
+  isAuthenticated: boolean;
+  userRoles: readonly unknown[] | null | undefined;
+  targetPath?: string;
+  requiredPermission?: RbacPermission | null;
+}): UnauthorizedAccessResponse {
+  const normalizedPath = params.targetPath?.trim().replace(/\/+$/, "") || "/";
+  const required =
+    params.requiredPermission ?? ROUTE_REQUIRED_PERMISSIONS[normalizedPath] ?? null;
+
+  if (!params.isAuthenticated) {
+    return {
+      status: 401,
+      code: "AUTHENTICATION_REQUIRED",
+      title: "Sign-In Required",
+      message: "Please sign in with your Howard University account to access this page.",
+      requiredPermission: required,
+      redirectTo: "/login",
+    };
+  }
+
+  return {
+    status: 403,
+    code: "INSUFFICIENT_ROLE_PERMISSIONS",
+    title: "Access Restricted",
+    message:
+      "Your current role does not have permission to view this page or perform this action. Contact an administrator if you require reviewer or leadership access.",
+    requiredPermission: required,
+    redirectTo: "/",
+  };
+}
+
+

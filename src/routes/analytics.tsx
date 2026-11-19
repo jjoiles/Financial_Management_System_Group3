@@ -30,6 +30,12 @@ import {
   type ReportingWindow,
 } from "@/lib/analytics-utils";
 import { formatCurrency } from "@/lib/format";
+import { useAppContext } from "@/lib/app-context";
+import {
+  buildUnauthorizedAccessResponse,
+  canAccessRoute,
+  getAuthorizedActionState,
+} from "@/lib/rbac";
 
 // F17 requirement: real-time reporting dashboard route for "Real-Time Reporting Templates".
 export const Route = createFileRoute("/analytics")({
@@ -57,6 +63,10 @@ const COLORS = [
 type WindowKey = ReportingWindow;
 
 function AnalyticsPage() {
+  const { role } = useAppContext();
+  const isRouteAllowed = canAccessRoute([role], "/analytics");
+  const actionState = getAuthorizedActionState([role]);
+
   // F17 requirement: data source selection for analytics page with fallback mock dataset.
   const { data: requests } = useFinancialRequests();
   const sourceRequests = requests.length ? requests : mockRequests;
@@ -72,6 +82,20 @@ function AnalyticsPage() {
     () => getReportingWindowData(windowKey),
     [windowKey],
   );
+
+  if (!isRouteAllowed) {
+    const unauthorized = buildUnauthorizedAccessResponse({
+      isAuthenticated: true,
+      userRoles: [role],
+      targetPath: "/analytics",
+    });
+    return (
+      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6">
+        <h1 className="text-lg font-semibold text-foreground">{unauthorized.title}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{unauthorized.message}</p>
+      </div>
+    );
+  }
 
   const kpis = [
     { label: "Avg. Turnaround", value: "4.8 days" },
@@ -103,6 +127,7 @@ function AnalyticsPage() {
 
   // F17 requirement: export feature for generating CSV analytics report.
   const exportReport = () => {
+    if (!actionState.canExportAnalyticsCsv) return;
     const csv = buildFinancialReportCsv(sourceRequests);
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });

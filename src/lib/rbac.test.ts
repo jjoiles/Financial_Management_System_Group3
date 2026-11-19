@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   associateUserWithRoles,
+  buildUnauthorizedAccessResponse,
+  canAccessRoute,
+  getAuthorizedActionState,
   hasPermission,
   isSystemRole,
   mapDatabaseRoleToPortalRole,
@@ -169,4 +172,73 @@ describe("F21.2: User-Role Management (F21.2.1–F21.2.3)", () => {
     });
   });
 });
+
+describe("F21.3: Front-End Authorization (F21.3.1–F21.3.3)", () => {
+  it("restricts application pages and routes according to role (F21.3.1)", () => {
+    // Public login page is always accessible
+    expect(canAccessRoute([], "/login")).toBe(true);
+
+    // Requester can access /, /submit, /tracking, /requests, but NOT /analytics or /sla
+    expect(canAccessRoute(["requester"], "/")).toBe(true);
+    expect(canAccessRoute(["requester"], "/submit")).toBe(true);
+    expect(canAccessRoute(["requester"], "/tracking")).toBe(true);
+    expect(canAccessRoute(["requester"], "/analytics")).toBe(false);
+    expect(canAccessRoute(["requester"], "/sla")).toBe(false);
+
+    // Reviewer, leadership, and admin can access /analytics and /sla
+    expect(canAccessRoute(["reviewer"], "/analytics")).toBe(true);
+    expect(canAccessRoute(["leadership"], "/analytics")).toBe(true);
+    expect(canAccessRoute(["admin"], "/sla")).toBe(true);
+  });
+
+  it("computes action visibility and disabled flags to hide or disable unauthorized UI controls (F21.3.2)", () => {
+    const requesterActions = getAuthorizedActionState(["requester"]);
+    expect(requesterActions.canCreateRequest).toBe(true);
+    expect(requesterActions.canViewOwnRequests).toBe(true);
+    expect(requesterActions.canReviewRequest).toBe(false);
+    expect(requesterActions.canViewAnalytics).toBe(false);
+    expect(requesterActions.canExportAnalyticsCsv).toBe(false);
+    expect(requesterActions.canViewSlaDashboard).toBe(false);
+    expect(requesterActions.canManageRoles).toBe(false);
+
+    const reviewerActions = getAuthorizedActionState(["reviewer"]);
+    expect(reviewerActions.canReviewRequest).toBe(true);
+    expect(reviewerActions.canViewAnalytics).toBe(true);
+    expect(reviewerActions.canExportAnalyticsCsv).toBe(true);
+    expect(reviewerActions.canViewSlaDashboard).toBe(true);
+    expect(reviewerActions.canManageRoles).toBe(false);
+
+    const adminActions = getAuthorizedActionState(["admin"]);
+    expect(adminActions.canManageRoles).toBe(true);
+  });
+
+  it("builds an appropriate 401/403 unauthorized-access response for restricted pages and actions (F21.3.3)", () => {
+    const unauth = buildUnauthorizedAccessResponse({
+      isAuthenticated: false,
+      userRoles: [],
+      targetPath: "/analytics",
+    });
+    expect(unauth).toMatchObject({
+      status: 401,
+      code: "AUTHENTICATION_REQUIRED",
+      title: "Sign-In Required",
+      requiredPermission: "analytics:view",
+      redirectTo: "/login",
+    });
+
+    const forbidden = buildUnauthorizedAccessResponse({
+      isAuthenticated: true,
+      userRoles: ["requester"],
+      targetPath: "/analytics",
+    });
+    expect(forbidden).toMatchObject({
+      status: 403,
+      code: "INSUFFICIENT_ROLE_PERMISSIONS",
+      title: "Access Restricted",
+      requiredPermission: "analytics:view",
+      redirectTo: "/",
+    });
+  });
+});
+
 
