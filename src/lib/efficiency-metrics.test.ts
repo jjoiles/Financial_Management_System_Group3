@@ -6,6 +6,7 @@ import {
   DATA_QUALITY_CHECKS,
   DATA_QUALITY_CODES,
   DATA_QUALITY_RULES,
+  DECISIVE_STAGE_ORDERING,
   EFFICIENCY_METRICS,
   EFFICIENCY_METRICS_VERSION,
   EFFICIENCY_METRIC_FAMILIES,
@@ -107,6 +108,7 @@ const TERMINAL_LIMITATIONS: KnownLimitationId[] = [
   "status_update_bypasses_stage_closure",
   "historical_stage_gaps",
   "unbounded_reads",
+  "non_atomic_reads",
   "role_scoped_visibility",
 ];
 
@@ -130,6 +132,7 @@ const STAGE_PROCESSING_EXPECTED = {
     "stage_outcome_not_recorded",
     "historical_stage_gaps",
     "unbounded_reads",
+    "non_atomic_reads",
     "role_scoped_visibility",
   ] as KnownLimitationId[],
 };
@@ -163,7 +166,12 @@ const EXPECTED_RULES: Record<
     separateReports: {},
     requiredReads: ["financial_requests"],
     stageReadCoverage: null,
-    limitations: ["created_at_client_writable", "unbounded_reads", "role_scoped_visibility"],
+    limitations: [
+      "created_at_client_writable",
+      "unbounded_reads",
+      "non_atomic_reads",
+      "role_scoped_visibility",
+    ],
   },
   active_queue_workload: {
     subject: "stage",
@@ -178,6 +186,7 @@ const EXPECTED_RULES: Record<
       "stage_constraints_unenforced",
       "historical_stage_gaps",
       "unbounded_reads",
+      "non_atomic_reads",
       "role_scoped_visibility",
     ],
   },
@@ -203,6 +212,7 @@ const EXPECTED_RULES: Record<
       "stage_outcome_not_recorded",
       "historical_stage_gaps",
       "unbounded_reads",
+      "non_atomic_reads",
       "role_scoped_visibility",
     ],
   },
@@ -249,6 +259,7 @@ describe("catalog identity and structure", () => {
       KNOWN_LIMITATIONS,
       STATISTIC_DEFINITIONS,
       SOURCE_FIELDS,
+      DECISIVE_STAGE_ORDERING,
       VERSION_BUMP_TRIGGERS,
       EFFICIENCY_METRIC_IDS,
       EFFICIENCY_METRIC_FAMILIES,
@@ -440,9 +451,12 @@ describe("reporting-period assignment", () => {
     expect(period.description.length).toBeGreaterThan(0);
   });
 
-  it("assigns decision metrics by the highest-numbered stage, not by created_at", () => {
+  it("assigns decision metrics by the decisive (workflow_revision, stage_order) stage, not by created_at", () => {
     for (const id of ["request_turnaround_time_average", "approval_rate"] as const) {
-      expect(EFFICIENCY_METRICS[id].period.description).toMatch(/highest-numbered stage/);
+      expect(EFFICIENCY_METRICS[id].period.description).toMatch(
+        /highest \(workflow_revision, stage_order\)/,
+      );
+      expect(EFFICIENCY_METRICS[id].period.description).not.toMatch(/highest-numbered/);
     }
   });
 });
@@ -718,7 +732,9 @@ describe("specific record handling", () => {
     expect(conditionCodes(TRACKED_TERMINAL_POPULATION)).toEqual(TERMINAL_EXCLUSIONS);
     const requirements = TRACKED_TERMINAL_POPULATION.conditions.map((c) => c.requirement);
     expect(requirements[2]).toMatch(/created_at is a valid instant/);
-    expect(requirements[5]).toMatch(/highest-numbered stage has status completed/);
+    expect(requirements[5]).toMatch(
+      /decisive stage, the stage with the highest \(workflow_revision, stage_order\), has status completed/,
+    );
     expect(requirements[6]).toMatch(/T\(r\) is not earlier than created_at/);
     expect(TRACKED_TERMINAL_POPULATION.scope).toMatch(/approved, rejected or completed/);
     expect(TRACKED_TERMINAL_POPULATION.scope).toMatch(/Pending requests .* are not counted/);
@@ -840,6 +856,86 @@ describe("specific record handling", () => {
   });
 });
 
+describe("workflow revisions", () => {
+  const terminalIds = [
+    "request_turnaround_time_average",
+    "request_turnaround_time_median",
+    "approval_rate",
+  ] as const;
+
+  it("orders a request's stages by (workflow_revision, stage_order), revision first", () => {
+    expect([...DECISIVE_STAGE_ORDERING]).toEqual(["workflow_revision", "stage_order"]);
+    for (const field of DECISIVE_STAGE_ORDERING) {
+      expect(SOURCE_FIELDS.approval_stage_tracking as readonly string[]).toContain(field);
+    }
+  });
+
+  it("reads both ordering fields in every metric that derives a decision instant", () => {
+    for (const metric of metrics()) {
+      if (!exclusionCodes(metric).includes("terminal_stage_invalid")) continue;
+      for (const field of DECISIVE_STAGE_ORDERING) {
+        expect(metric.sources).toContainEqual({ table: "approval_stage_tracking", field });
+      }
+    }
+    for (const id of terminalIds) {
+      expect(EFFICIENCY_METRICS[id].population).toBe(TRACKED_TERMINAL_POPULATION);
+    }
+  });
+
+  it("names the pair, never stage_order alone, wherever the decisive stage is described", () => {
+    const texts = [
+      DATA_QUALITY_CHECKS.terminal_stage_invalid.description,
+      TRACKED_TERMINAL_POPULATION.conditions[5].requirement,
+      ...terminalIds.flatMap((id) => [EFFICIENCY_METRICS[id].period.description]),
+      EFFICIENCY_METRICS.request_turnaround_time_average.formula,
+      EFFICIENCY_METRICS.request_turnaround_time_median.formula,
+    ];
+    for (const text of texts) {
+      expect(text).toMatch(/highest \(workflow_revision, stage_order\)/);
+    }
+    expect(read("./efficiency-metrics.ts")).not.toMatch(/highest-numbered/);
+    expect(DOC).not.toMatch(/highest-numbered/);
+  });
+
+  it("keeps turnaround measured from the original created_at, including pre-amendment time", () => {
+    for (const id of [
+      "request_turnaround_time_average",
+      "request_turnaround_time_median",
+    ] as const) {
+      const metric = EFFICIENCY_METRICS[id];
+      expect(metric.formula).toMatch(/TAT\(r\) = \(T\(r\) - r\.created_at\)/);
+      expect(metric.calculationRules.join(" ")).toMatch(
+        /amended request the duration still starts at the original created_at/,
+      );
+      expect(metric.calculationRules.join(" ")).toMatch(/time spent in earlier workflow revisions/);
+    }
+  });
+
+  it("distinguishes the decisive stage from stages that only contribute elapsed time", () => {
+    // The decisive stage must be completed: a cancelled stage can never supply T(r).
+    expect(TRACKED_TERMINAL_POPULATION.conditions[5].requirement).toMatch(
+      /has status completed and a valid completed_at/,
+    );
+    for (const id of [
+      "request_turnaround_time_average",
+      "request_turnaround_time_median",
+    ] as const) {
+      const rules = EFFICIENCY_METRICS[id].calculationRules.join(" ");
+      expect(rules).toMatch(/Only the decisive stage supplies the decision instant T\(r\)/);
+      expect(rules).toMatch(/cancelled stages of earlier revisions, are never decisive/);
+      expect(rules).toMatch(/elapsed time lies inside the interval from created_at to T\(r\)/);
+    }
+    expect(DOC).toMatch(/A cancelled stage can never be decisive/);
+    expect(DOC).toMatch(/H2 is cancelled, so it can never be the decisive stage/);
+    expect(DOC).toMatch(/part of the turnaround and must be included for the identity to hold/);
+  });
+
+  it("documents the amended-request worked example", () => {
+    expect(DOC).toMatch(/### 5\.\d+ Amended request/);
+    expect(DOC).toMatch(/revision 2/);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Sources and limitations
 // ---------------------------------------------------------------------------
@@ -925,6 +1021,54 @@ describe("known limitations", () => {
     ]);
     expect(KNOWN_LIMITATIONS.unbounded_reads.resolvedBy).toBe("F19.3");
     expect(KNOWN_LIMITATIONS.historical_stage_gaps.resolvedBy).toBe("not-resolvable");
+  });
+
+  it("applies non_atomic_reads to every metric, separating pagination from cross-table timing", () => {
+    const limitation = KNOWN_LIMITATIONS.non_atomic_reads;
+    expect(limitation.resolvedBy).toBe("by-design");
+    expect(limitation.description).toMatch(/not a single database snapshot/);
+    // Pagination applies to every metric, including the single-table ones.
+    expect(limitation.description).toMatch(/Pagination, which affects every metric/);
+    expect(limitation.description).toMatch(/even a single-table read/);
+    for (const metric of metrics()) {
+      expect(metric.limitations).toContain("non_atomic_reads");
+    }
+    const singleTable = metrics().filter((metric) => metric.requiredReads.length === 1);
+    expect(singleTable.map((metric) => metric.id).sort()).toEqual([
+      "queue_throughput",
+      "request_volume",
+    ]);
+    expect(limitation.description).toMatch(/Request Volume's financial_requests read/);
+    expect(limitation.description).toMatch(/Queue Throughput's approval_stage_tracking read/);
+    // Cross-table timing is scoped to metrics that read both tables.
+    expect(limitation.description).toMatch(
+      /Cross-table timing, which affects only metrics that require both financial_requests and approval_stage_tracking/,
+    );
+    const docLimitations = DOC.split(/^## 7\. /m)[1]?.split(/^## /m)[0] ?? "";
+    expect(docLimitations).toMatch(/\*\*Pagination \(all eight metrics\)\.\*\*/);
+    expect(docLimitations).toMatch(/\*\*Cross-table timing \(six metrics\)\.\*\*/);
+    const workload = EFFICIENCY_METRICS.active_queue_workload.period;
+    expect(workload.mode).toBe("snapshot");
+    expect(workload.description).toMatch(/read interval, not a single instant/);
+  });
+
+  it("never claims that count or pagination checks prove stable rows or a consistent snapshot", () => {
+    const limitation = KNOWN_LIMITATIONS.non_atomic_reads.description;
+    expect(limitation).toMatch(/validates pagination completeness and per-table counts/);
+    expect(limitation).toMatch(/do not show that rows stayed unchanged/);
+    expect(limitation).toMatch(/cannot guarantee a consistent snapshot/);
+    expect(limitation).toMatch(/offset each other/);
+    expect(limitation).toMatch(/changed after it was read/);
+    const docLimitations = DOC.split(/^## 7\. /m)[1]?.split(/^## /m)[0] ?? "";
+    expect(docLimitations).toMatch(
+      /matching counts do \*\*not\*\* show that rows stayed unchanged/,
+    );
+    expect(docLimitations).toMatch(/cannot guarantee a consistent snapshot/);
+    const overclaim =
+      /\bproves?\b[^.\n]*\b(stable|unchanged|consistent|snapshot)\b|stable while it was read/i;
+    expect(limitation).not.toMatch(overclaim);
+    expect(DOC).not.toMatch(overclaim);
+    expect(read("./efficiency-metrics.ts")).not.toMatch(overclaim);
   });
 
   it("does not assert an unverified F16 deployment date", () => {
@@ -1059,7 +1203,29 @@ describe("documentation agrees with the catalog", () => {
     // Join the catalog's JSDoc lines so wrapping does not matter.
     const catalogComments = read("./efficiency-metrics.ts").replace(/\n\s*\* ?/g, " ");
     expect(catalogComments).toContain(policy);
-    expect(EFFICIENCY_METRICS_VERSION).toBe("2026-11-18.1");
+    expect(EFFICIENCY_METRICS_VERSION).toBe("2026-11-18.2");
+  });
+
+  it("lists every known limitation in the section 7 table with its resolution", () => {
+    const limitations = DOC.split(/^## 7\. /m)[1]?.split(/^## /m)[0] ?? "";
+    const rows = Object.fromEntries(
+      [...limitations.matchAll(/^\|\s*`([a-z_]+)`\s*\|\s*([^|]+?)\s*\|/gm)].map(
+        ([, id, resolvedBy]) => [id, resolvedBy.replace(" ", "-")],
+      ),
+    );
+    expect(Object.keys(rows)).toEqual([...KNOWN_LIMITATION_IDS]);
+    for (const id of KNOWN_LIMITATION_IDS) {
+      expect(rows[id]).toBe(KNOWN_LIMITATIONS[id].resolvedBy);
+    }
+  });
+
+  it("lists the same source fields as SOURCE_FIELDS in section 3.4", () => {
+    const line = DOC.split("\n").find((text) => text.startsWith("- Only `financial_requests`"));
+    expect(line).toBeDefined();
+    for (const [table, fields] of Object.entries(SOURCE_FIELDS)) {
+      const listed = (line ?? "").split(`\`${table}\` (`)[1]?.split(")")[0] ?? "";
+      expect([...listed.matchAll(/`([a-z_]+)`/g)].map((match) => match[1])).toEqual([...fields]);
+    }
   });
 });
 

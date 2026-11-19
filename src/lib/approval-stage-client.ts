@@ -9,6 +9,9 @@ import { supabase } from "@/integrations/supabase/client";
 export type ApprovalStageRow = {
   id: string;
   request_id: string;
+  // Added by the F19.2 migration (NOT NULL, default 1). Selecting it fails on
+  // a backend without F19.2; callers must surface that error, not hide it.
+  workflow_revision: number;
   stage_order: number;
   queue_id: string;
   stage_name: string;

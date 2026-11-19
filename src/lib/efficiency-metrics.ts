@@ -53,7 +53,7 @@ import { deepFreeze } from "@/lib/deep-freeze";
  * first commit are part of `2026-11-18.1`; every change after it requires a
  * bump.
  */
-export const EFFICIENCY_METRICS_VERSION = "2026-11-18.1";
+export const EFFICIENCY_METRICS_VERSION = "2026-11-18.2";
 
 /** Changes that require a version bump. docs/F19_Efficiency_Metrics.md section 9 lists the same items. */
 export const VERSION_BUMP_TRIGGERS = Object.freeze([
@@ -108,12 +108,18 @@ export type EfficiencyMetricId = (typeof EFFICIENCY_METRIC_IDS)[number];
  *
  * Deliberately absent: financial_requests.updated_at (not workflow timing),
  * and the whole workflow_events table (writable by requesters and reviewers
- * until F19.2).
+ * until F19.2). approval_stage_tracking.id is not a metric source; F19.3
+ * loaders select it only as a pagination key.
+ *
+ * approval_stage_tracking.workflow_revision (F19.2) identifies the approval
+ * chain a stage belongs to; together with stage_order it selects the
+ * decisive stage (DECISIVE_STAGE_ORDERING).
  */
 export const SOURCE_FIELDS = Object.freeze({
   financial_requests: Object.freeze(["id", "status", "created_at"] as const),
   approval_stage_tracking: Object.freeze([
     "request_id",
+    "workflow_revision",
     "stage_order",
     "queue_id",
     "status",
@@ -126,6 +132,20 @@ export type SourceField<T extends SourceTable> = (typeof SOURCE_FIELDS)[T][numbe
 export type SourceFieldRef = {
   [T in SourceTable]: { readonly table: T; readonly field: SourceField<T> };
 }[SourceTable];
+
+/**
+ * How a request's decisive stage is chosen: the stage record with the
+ * highest (workflow_revision, stage_order) pair, compared lexicographically:
+ * the highest workflow_revision first, then the highest stage_order within
+ * that revision. An F19.2 amendment cancels the active stage and restarts the
+ * chain at stage_order 1 of a new revision, so stage_order alone can point at
+ * a cancelled stage of an earlier revision. Earlier revisions' stages are kept
+ * as history and still count in stage metrics under their own conditions.
+ */
+export const DECISIVE_STAGE_ORDERING = Object.freeze([
+  "workflow_revision",
+  "stage_order",
+] as const satisfies readonly SourceField<"approval_stage_tracking">[]);
 
 // ---------------------------------------------------------------------------
 // Request status groups and queue groups
@@ -361,7 +381,7 @@ export const DATA_QUALITY_CHECKS: Readonly<Record<DataQualityCode, DataQualityCh
     subject: "request",
     treatment: "excluded",
     description:
-      "The request's highest-numbered stage is not completed with a valid completed_at, so no decision instant can be derived.",
+      "The request's decisive stage, the stage with the highest (workflow_revision, stage_order), is not completed with a valid completed_at, so no decision instant can be derived.",
   },
   decision_before_creation: {
     code: "decision_before_creation",
@@ -441,6 +461,7 @@ export const KNOWN_LIMITATION_IDS = Object.freeze([
   "stage_outcome_not_recorded",
   "historical_stage_gaps",
   "unbounded_reads",
+  "non_atomic_reads",
   "role_scoped_visibility",
 ] as const);
 export type KnownLimitationId = (typeof KNOWN_LIMITATION_IDS)[number];
@@ -493,6 +514,12 @@ export const KNOWN_LIMITATIONS: Readonly<Record<KnownLimitationId, KnownLimitati
     resolvedBy: "F19.3",
     description:
       "Existing request and stage reads are not paginated and may be truncated by the API row limit; the existing stage loader in requests-data.ts reads only active stages and hides read errors and duplicate active stages. Under the load-integrity precondition these gaps block calculation instead of skewing results.",
+  },
+  non_atomic_reads: {
+    id: "non_atomic_reads",
+    resolvedBy: "by-design",
+    description:
+      "Loaded data is not a single database snapshot, for two reasons. (1) Pagination, which affects every metric: the shared F19.3 loader reads each required table in pages over several API requests, so even a single-table read, such as Request Volume's financial_requests read or Queue Throughput's approval_stage_tracking read, is not atomic. (2) Cross-table timing, which affects only metrics that require both financial_requests and approval_stage_tracking: the two tables are read by separate requests at different moments. The loader validates pagination completeness and per-table counts (no duplicate, out-of-order or skipped page, and exact counts before and after paging that equal the rows collected). Those checks detect some concurrent changes but do not show that rows stayed unchanged: they cannot detect an insert and a delete that offset each other, or a row that changed after it was read, and they cannot guarantee a consistent snapshot. Results are as of the load's read interval, not a single instant.",
   },
   role_scoped_visibility: {
     id: "role_scoped_visibility",
@@ -665,7 +692,7 @@ export const TRACKED_TERMINAL_POPULATION: MetricPopulation = deepFreeze({
     },
     {
       requirement:
-        "The highest-numbered stage has status completed and a valid completed_at; that completed_at is the decision instant T(r).",
+        "The decisive stage, the stage with the highest (workflow_revision, stage_order), has status completed and a valid completed_at; that completed_at is the decision instant T(r).",
       exclusion: "terminal_stage_invalid",
     },
     {
@@ -680,6 +707,7 @@ const TRACKED_TERMINAL_SOURCES: readonly SourceFieldRef[] = [
   { table: "financial_requests", field: "status" },
   { table: "financial_requests", field: "created_at" },
   { table: "approval_stage_tracking", field: "request_id" },
+  { table: "approval_stage_tracking", field: "workflow_revision" },
   { table: "approval_stage_tracking", field: "stage_order" },
   { table: "approval_stage_tracking", field: "status" },
   { table: "approval_stage_tracking", field: "completed_at" },
@@ -689,7 +717,7 @@ const TRACKED_TERMINAL_PERIOD: PeriodAssignment = {
   mode: "period",
   anchor: { table: "approval_stage_tracking", field: "completed_at" },
   description:
-    "A request belongs to the period containing its decision instant: the completed_at of its highest-numbered stage. created_at does not decide the period.",
+    "A request belongs to the period containing its decision instant: the completed_at of its decisive stage, the stage with the highest (workflow_revision, stage_order). created_at does not decide the period.",
 };
 
 const TRACKED_TERMINAL_LIMITATIONS: readonly KnownLimitationId[] = [
@@ -698,6 +726,7 @@ const TRACKED_TERMINAL_LIMITATIONS: readonly KnownLimitationId[] = [
   "status_update_bypasses_stage_closure",
   "historical_stage_gaps",
   "unbounded_reads",
+  "non_atomic_reads",
   "role_scoped_visibility",
 ];
 
@@ -744,6 +773,7 @@ const STAGE_PROCESSING_TIME = {
     "stage_outcome_not_recorded",
     "historical_stage_gaps",
     "unbounded_reads",
+    "non_atomic_reads",
     "role_scoped_visibility",
   ],
 } as const satisfies Partial<EfficiencyMetricDefinition>;
@@ -763,6 +793,8 @@ const REQUEST_TURNAROUND_TIME = {
   separateReports: [],
   calculationRules: [
     "The duration starts at created_at, so it includes the intake gap before stage 1 starts.",
+    "For an amended request the duration still starts at the original created_at, so it includes the time spent in earlier workflow revisions before the amendment.",
+    "Only the decisive stage supplies the decision instant T(r), and it must be completed. Other stages, including cancelled stages of earlier revisions, are never decisive, but their elapsed time lies inside the interval from created_at to T(r) and so is part of the turnaround.",
     NO_WORKFLOW_EVENTS_RULE,
   ],
   limitations: TRACKED_TERMINAL_LIMITATIONS,
@@ -770,7 +802,7 @@ const REQUEST_TURNAROUND_TIME = {
 
 const STAGE_DURATION_FORMULA = "d(s) = (s.completed_at - s.started_at) / 3,600,000 ms";
 const TURNAROUND_DURATION_FORMULA =
-  "T(r) = completed_at of r's highest-numbered stage; TAT(r) = (T(r) - r.created_at) / 3,600,000 ms";
+  "T(r) = completed_at of r's stage with the highest (workflow_revision, stage_order); TAT(r) = (T(r) - r.created_at) / 3,600,000 ms";
 
 /** The F19 metric catalog, keyed by identifier. Deeply frozen. */
 export const EFFICIENCY_METRICS: Readonly<Record<EfficiencyMetricId, EfficiencyMetricDefinition>> =
@@ -808,7 +840,12 @@ export const EFFICIENCY_METRICS: Readonly<Record<EfficiencyMetricId, EfficiencyM
       calculationRules: [
         "Counts each remaining request once, whatever its status, including rejected, pending, completed and requests whose workflow failed.",
       ],
-      limitations: ["created_at_client_writable", "unbounded_reads", "role_scoped_visibility"],
+      limitations: [
+        "created_at_client_writable",
+        "unbounded_reads",
+        "non_atomic_reads",
+        "role_scoped_visibility",
+      ],
     },
     active_queue_workload: {
       id: "active_queue_workload",
@@ -835,7 +872,7 @@ export const EFFICIENCY_METRICS: Readonly<Record<EfficiencyMetricId, EfficiencyM
       period: {
         mode: "snapshot",
         description:
-          "A point-in-time count of currently active stages. It is not assigned to reporting periods, and past workload is not reconstructed.",
+          "A count of currently active stages as of the dataset load. It is not assigned to reporting periods, and past workload is not reconstructed. Because reads are not atomic (non_atomic_reads), the snapshot describes the load's read interval, not a single instant.",
       },
       population: {
         subject: "stage",
@@ -870,6 +907,7 @@ export const EFFICIENCY_METRICS: Readonly<Record<EfficiencyMetricId, EfficiencyM
         "stage_constraints_unenforced",
         "historical_stage_gaps",
         "unbounded_reads",
+        "non_atomic_reads",
         "role_scoped_visibility",
       ],
     },
@@ -977,6 +1015,7 @@ export const EFFICIENCY_METRICS: Readonly<Record<EfficiencyMetricId, EfficiencyM
         "stage_outcome_not_recorded",
         "historical_stage_gaps",
         "unbounded_reads",
+        "non_atomic_reads",
         "role_scoped_visibility",
       ],
     },
