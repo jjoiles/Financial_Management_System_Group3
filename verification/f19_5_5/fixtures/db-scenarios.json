@@ -1,0 +1,444 @@
+{
+  "_comment": "F19.5.5 synthetic scenarios that PostgreSQL can store under the current constraints. Used by db/run.sh (seeded into a disposable database) and, directly, by synthetic-scenarios.test.ts. Timestamps are ISO-8601 with explicit offsets. Expected values are in scenarios.ts.",
+  "scenarios": {
+    "S5": {
+      "description": "Spec section 5 worked example (requests A-F; prototype P is passed separately in the prototype scenario because it never exists in the database).",
+      "requests": [
+        {
+          "id": "00000000-0000-4000-a000-000000000001",
+          "label": "A",
+          "status": "approved",
+          "created_at": "2026-11-02T12:58:30Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000002",
+          "label": "B",
+          "status": "rejected",
+          "created_at": "2026-11-10T08:59:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000003",
+          "label": "C",
+          "status": "approved",
+          "created_at": "2026-11-12T10:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000004",
+          "label": "D",
+          "status": "approved",
+          "created_at": "2026-10-30T11:59:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000005",
+          "label": "E",
+          "status": "submitted",
+          "created_at": "2026-11-25T00:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000006",
+          "label": "F",
+          "status": "submitted",
+          "created_at": "2026-11-14T16:00:00Z",
+          "workflow_revision": 1
+        }
+      ],
+      "stages": [
+        {
+          "id": "00000000-0000-4000-b000-000000000101",
+          "label": "A1",
+          "request_id": "00000000-0000-4000-a000-000000000001",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "completed",
+          "started_at": "2026-11-02T13:00:00Z",
+          "completed_at": "2026-11-04T13:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000102",
+          "label": "A2",
+          "request_id": "00000000-0000-4000-a000-000000000001",
+          "workflow_revision": 1,
+          "stage_order": 2,
+          "queue_id": "dean_office",
+          "status": "completed",
+          "started_at": "2026-11-04T13:00:00Z",
+          "completed_at": "2026-11-07T01:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000103",
+          "label": "B1",
+          "request_id": "00000000-0000-4000-a000-000000000002",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "completed",
+          "started_at": "2026-11-10T09:00:00Z",
+          "completed_at": "2026-11-10T21:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000104",
+          "label": "C1",
+          "request_id": "00000000-0000-4000-a000-000000000003",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "research_admin",
+          "status": "active",
+          "started_at": "2026-11-12T10:00:20Z",
+          "completed_at": null
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000105",
+          "label": "D1",
+          "request_id": "00000000-0000-4000-a000-000000000004",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "completed",
+          "started_at": "2026-10-30T12:00:00Z",
+          "completed_at": "2026-11-01T12:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000106",
+          "label": "E1",
+          "request_id": "00000000-0000-4000-a000-000000000005",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "active",
+          "started_at": "2026-11-25T00:00:10Z",
+          "completed_at": null
+        }
+      ]
+    },
+    "S58": {
+      "description": "Spec section 5.8 amended request H: revision 1 (completed dept stage, cancelled dean stage), revision 2 (completed dept stage).",
+      "requests": [
+        {
+          "id": "00000000-0000-4000-a000-000000000011",
+          "label": "H",
+          "status": "approved",
+          "created_at": "2026-11-03T09:00:00Z",
+          "workflow_revision": 2
+        }
+      ],
+      "stages": [
+        {
+          "id": "00000000-0000-4000-b000-000000000111",
+          "label": "H1",
+          "request_id": "00000000-0000-4000-a000-000000000011",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "completed",
+          "started_at": "2026-11-03T09:00:00Z",
+          "completed_at": "2026-11-04T09:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000112",
+          "label": "H2",
+          "request_id": "00000000-0000-4000-a000-000000000011",
+          "workflow_revision": 1,
+          "stage_order": 2,
+          "queue_id": "dean_office",
+          "status": "cancelled",
+          "started_at": "2026-11-04T09:00:00Z",
+          "completed_at": "2026-11-05T09:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000113",
+          "label": "H3",
+          "request_id": "00000000-0000-4000-a000-000000000011",
+          "workflow_revision": 2,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "completed",
+          "started_at": "2026-11-05T09:00:00Z",
+          "completed_at": "2026-11-06T21:00:00Z"
+        }
+      ]
+    },
+    "SX": {
+      "description": "Storable edge cases: completed status (with completed and with orphaned active stages), decision before creation, cancelled decisive stage (no fallback), untracked terminal request, multi-stage rejection across queues, zero-hour stage and turnaround, period-end boundaries, sub-millisecond timestamps, skipped stages, pending requests with and without stages.",
+      "requests": [
+        {
+          "id": "00000000-0000-4000-a000-000000000021",
+          "label": "G1",
+          "status": "completed",
+          "created_at": "2026-11-05T00:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000022",
+          "label": "G2",
+          "status": "completed",
+          "created_at": "2026-11-05T06:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000023",
+          "label": "K",
+          "status": "approved",
+          "created_at": "2026-11-20T00:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000024",
+          "label": "L",
+          "status": "approved",
+          "created_at": "2026-11-08T00:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000025",
+          "label": "M",
+          "status": "approved",
+          "created_at": "2026-11-09T00:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000026",
+          "label": "N",
+          "status": "rejected",
+          "created_at": "2026-11-15T00:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000027",
+          "label": "Q",
+          "status": "approved",
+          "created_at": "2026-11-21T10:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000028",
+          "label": "R",
+          "status": "approved",
+          "created_at": "2026-11-30T23:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000029",
+          "label": "S",
+          "status": "submitted",
+          "created_at": "2026-12-01T00:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000030",
+          "label": "U",
+          "status": "submitted",
+          "created_at": "2026-10-31T23:59:59.999999Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000031",
+          "label": "V",
+          "status": "approved",
+          "created_at": "2026-11-11T00:00:00.0004Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000032",
+          "label": "W",
+          "status": "under_review",
+          "created_at": "2026-11-22T00:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000033",
+          "label": "X",
+          "status": "submitted",
+          "created_at": "2026-11-23T00:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000034",
+          "label": "Y",
+          "status": "submitted",
+          "created_at": "2026-11-24T00:00:00Z",
+          "workflow_revision": 1
+        },
+        {
+          "id": "00000000-0000-4000-a000-000000000035",
+          "label": "Z",
+          "status": "approved",
+          "created_at": "2026-11-02T00:00:00Z",
+          "workflow_revision": 1
+        }
+      ],
+      "stages": [
+        {
+          "id": "00000000-0000-4000-b000-000000000201",
+          "label": "G1a",
+          "request_id": "00000000-0000-4000-a000-000000000021",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "dean_office",
+          "status": "completed",
+          "started_at": "2026-11-05T00:00:00Z",
+          "completed_at": "2026-11-06T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000202",
+          "label": "G2a",
+          "request_id": "00000000-0000-4000-a000-000000000022",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "cfo_office",
+          "status": "active",
+          "started_at": "2026-11-05T06:00:00Z",
+          "completed_at": null
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000203",
+          "label": "K1",
+          "request_id": "00000000-0000-4000-a000-000000000023",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "completed",
+          "started_at": "2026-11-18T00:00:00Z",
+          "completed_at": "2026-11-19T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000204",
+          "label": "L1",
+          "request_id": "00000000-0000-4000-a000-000000000024",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "completed",
+          "started_at": "2026-11-08T00:00:00Z",
+          "completed_at": "2026-11-08T10:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000205",
+          "label": "L2",
+          "request_id": "00000000-0000-4000-a000-000000000024",
+          "workflow_revision": 1,
+          "stage_order": 2,
+          "queue_id": "dean_office",
+          "status": "cancelled",
+          "started_at": "2026-11-08T10:00:00Z",
+          "completed_at": "2026-11-08T12:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000206",
+          "label": "N1",
+          "request_id": "00000000-0000-4000-a000-000000000026",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "provost_finance",
+          "status": "completed",
+          "started_at": "2026-11-15T00:00:00Z",
+          "completed_at": "2026-11-15T06:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000207",
+          "label": "N2",
+          "request_id": "00000000-0000-4000-a000-000000000026",
+          "workflow_revision": 1,
+          "stage_order": 2,
+          "queue_id": "sponsored_programs",
+          "status": "completed",
+          "started_at": "2026-11-15T06:00:00Z",
+          "completed_at": "2026-11-16T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000208",
+          "label": "Q1",
+          "request_id": "00000000-0000-4000-a000-000000000027",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "research_admin",
+          "status": "completed",
+          "started_at": "2026-11-21T10:00:00Z",
+          "completed_at": "2026-11-21T10:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000209",
+          "label": "R1",
+          "request_id": "00000000-0000-4000-a000-000000000028",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "completed",
+          "started_at": "2026-11-30T23:00:00Z",
+          "completed_at": "2026-12-01T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000210",
+          "label": "V1",
+          "request_id": "00000000-0000-4000-a000-000000000031",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "completed",
+          "started_at": "2026-11-11T00:00:00.0004Z",
+          "completed_at": "2026-11-11T01:00:00.0009Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000211",
+          "label": "W1",
+          "request_id": "00000000-0000-4000-a000-000000000032",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "completed",
+          "started_at": "2026-11-22T00:00:00Z",
+          "completed_at": "2026-11-22T05:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000212",
+          "label": "W2",
+          "request_id": "00000000-0000-4000-a000-000000000032",
+          "workflow_revision": 1,
+          "stage_order": 2,
+          "queue_id": "dean_office",
+          "status": "active",
+          "started_at": "2026-11-22T05:00:00Z",
+          "completed_at": null
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000213",
+          "label": "X1",
+          "request_id": "00000000-0000-4000-a000-000000000033",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "cancelled",
+          "started_at": "2026-11-23T00:00:00Z",
+          "completed_at": "2026-11-23T01:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000214",
+          "label": "Z1",
+          "request_id": "00000000-0000-4000-a000-000000000035",
+          "workflow_revision": 1,
+          "stage_order": 1,
+          "queue_id": "department_budget",
+          "status": "skipped",
+          "started_at": "2026-11-02T00:00:00Z",
+          "completed_at": "2026-11-02T00:00:00Z"
+        },
+        {
+          "id": "00000000-0000-4000-b000-000000000215",
+          "label": "Z2",
+          "request_id": "00000000-0000-4000-a000-000000000035",
+          "workflow_revision": 1,
+          "stage_order": 2,
+          "queue_id": "dean_office",
+          "status": "completed",
+          "started_at": "2026-11-02T00:00:00Z",
+          "completed_at": "2026-11-03T00:00:00Z"
+        }
+      ]
+    }
+  }
+}
