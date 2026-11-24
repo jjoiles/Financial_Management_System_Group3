@@ -33,6 +33,7 @@ The tests cover these behavior groups:
 | Payload mapping, optional Research fields, app URL construction | 5 |
 | HMAC-SHA256 signing and signature changes | 2 |
 | HTTPS allowlist and invalid URL handling | 4 |
+| Reject non-HTTPS flow URL before network access | 1 |
 | Successful POST and response run ID handling | 2 |
 | Outbound headers and optional signature header | 2 |
 | Non-retryable 4xx response handling | 1 |
@@ -40,7 +41,7 @@ The tests cover these behavior groups:
 | Retry on network errors | 1 |
 | Timeout/AbortError reporting | 1 |
 | Retry exhaustion and final response reporting | 1 |
-| **Total** | **21** |
+| **Total** | **22** |
 
 ## 4. AI-assisted test development and validation approach
 
@@ -69,7 +70,7 @@ The suite uses controlled response objects, including success, 4xx, 429, 5xx, ne
 
 ### Coverage percentage
 
-A numeric line/branch coverage percentage is **not reported**. The inspected repository configuration does not show an installed Vitest coverage provider or an existing coverage script on `main`. The 21 cases are test-count evidence, not a claim of 100% line or branch coverage. Configure a compatible provider before publishing numerical coverage percentages.
+A numeric line/branch coverage percentage is **not reported**. The inspected repository configuration does not show an installed Vitest coverage provider or an existing coverage script on `main`. The 22 cases are test-count evidence, not a claim of 100% line or branch coverage. Configure a compatible provider before publishing numerical coverage percentages.
 
 ## 6. Commands to run before merge
 
