@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { Building2, KeyRound, Lock, Mail, QrCode, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { toQrCodeImageSrc } from "@/lib/qr-code";
 import {
   NEUTRAL_RESEND_MESSAGE,
   NEUTRAL_RESET_MESSAGE,
@@ -37,6 +38,7 @@ function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [mfaCode, setMfaCode] = useState("");
   const [setup, setSetup] = useState<{ factorId: string; qrCode: string; secret: string } | null>(null);
+  const qrCodeSrc = toQrCodeImageSrc(setup?.qrCode);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -240,7 +242,17 @@ function LoginPage() {
             ) : setup ? (
               <div className="space-y-4">
                 <div className="rounded-xl border border-border bg-background p-4 text-center">
-                  <div className="mx-auto mb-3 flex h-44 w-44 items-center justify-center rounded-lg bg-card p-3" dangerouslySetInnerHTML={{ __html: setup.qrCode }} />
+                  {qrCodeSrc ? (
+                    <img
+                      src={qrCodeSrc}
+                      alt="QR code for your authenticator app"
+                      className="mx-auto mb-3 h-44 w-44 rounded-lg bg-card p-3"
+                    />
+                  ) : (
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      QR code unavailable. Enter the manual key in your authenticator app.
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">Manual key: <span className="font-mono text-foreground">{setup.secret}</span></p>
                 </div>
                 <MfaPanel code={mfaCode} setCode={setMfaCode} onVerify={verifyCode} />
