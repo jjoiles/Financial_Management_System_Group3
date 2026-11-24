@@ -283,7 +283,7 @@ describe("F7 Power Automate POST behavior", () => {
 
   it("does not retry non-retryable 4xx responses", async () => {
     const fetchImpl = createFetch(response(400), response(200));
-    const sleep = vi.fn(async () => undefined);
+    const sleep = vi.fn(async (_delay: number) => undefined);
 
     const result = await postToFlow(
       buildFlowPayload(requestRow(), routingDecision()),
@@ -308,7 +308,7 @@ describe("F7 Power Automate POST behavior", () => {
 
   it("retries HTTP 429 and succeeds on the next attempt", async () => {
     const fetchImpl = createFetch(response(429), response(202, "run-429"));
-    const sleep = vi.fn(async () => undefined);
+    const sleep = vi.fn(async (_delay: number) => undefined);
 
     const result = await postToFlow(
       buildFlowPayload(requestRow(), routingDecision()),
@@ -327,7 +327,8 @@ describe("F7 Power Automate POST behavior", () => {
       attempts: 2,
       runId: "run-429",
     });
-    expect(sleep).toHaveBeenCalledExactlyOnceWith(25);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep).toHaveBeenCalledWith(25);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
@@ -337,7 +338,7 @@ describe("F7 Power Automate POST behavior", () => {
       response(502),
       response(200, "run-recovered"),
     );
-    const sleep = vi.fn(async () => undefined);
+    const sleep = vi.fn(async (_delay: number) => undefined);
 
     const result = await postToFlow(
       buildFlowPayload(requestRow(), routingDecision()),
@@ -364,7 +365,7 @@ describe("F7 Power Automate POST behavior", () => {
       new Error("network unavailable"),
       response(200, "run-network-recovered"),
     );
-    const sleep = vi.fn(async () => undefined);
+    const sleep = vi.fn(async (_delay: number) => undefined);
 
     const result = await postToFlow(
       buildFlowPayload(requestRow(), routingDecision()),
@@ -382,7 +383,8 @@ describe("F7 Power Automate POST behavior", () => {
       attempts: 2,
       runId: "run-network-recovered",
     });
-    expect(sleep).toHaveBeenCalledExactlyOnceWith(5);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep).toHaveBeenCalledWith(5);
   });
 
   it("reports timeout aborts with the configured timeout duration", async () => {
@@ -411,7 +413,7 @@ describe("F7 Power Automate POST behavior", () => {
 
   it("returns the final HTTP failure after exhausting all configured attempts", async () => {
     const fetchImpl = createFetch(response(503), response(502), response(504));
-    const sleep = vi.fn(async () => undefined);
+    const sleep = vi.fn(async (_delay: number) => undefined);
 
     const result = await postToFlow(
       buildFlowPayload(requestRow(), routingDecision()),
