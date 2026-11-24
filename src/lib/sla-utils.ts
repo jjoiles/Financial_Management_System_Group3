@@ -17,7 +17,7 @@ export type SlaResult = {
   status: SlaStatus;
 };
 
-const HOUR_IN_MS = 60 * 60 * 1000;
+export const HOUR_IN_MS = 60 * 60 * 1000;
 
 /**
  * Calculates SLA status for one approval stage.

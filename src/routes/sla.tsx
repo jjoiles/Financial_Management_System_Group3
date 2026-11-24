@@ -1,15 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { Activity, AlertTriangle, CheckCircle2, Clock3, RefreshCw, Timer } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
-import { approvalStageClient } from "@/lib/approval-stage-client";
-
-import { calculateStageSla } from "@/lib/sla-utils";
-
-import { formatCurrency } from "@/lib/format";
+import { useSlaDashboard } from "@/hooks/use-sla-dashboard";
+import {
+  buildDashboardStages,
+  formatDate,
+  formatDuration,
+  formatRemainingTime,
+  getCompletedStageElapsedHours,
+  summarizeDashboardStages,
+} from "@/lib/sla-dashboard";
 
 export const Route = createFileRoute("/sla")({
   component: SlaDashboardPage,
@@ -21,66 +24,15 @@ export const Route = createFileRoute("/sla")({
         content: "Monitor financial request approval deadlines and SLA performance.",
       },
       { property: "og:title", content: "SLA Dashboard — FinReq" },
-      { property: "og:description", content: "Monitor financial request approval deadlines and SLA performance." },
+      {
+        property: "og:description",
+        content: "Monitor financial request approval deadlines and SLA performance.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
   }),
 });
-
-type StageRow = {
-  id: string;
-  request_id: string;
-  stage_order: number;
-  queue_id: string;
-  stage_name: string;
-  started_at: string;
-  deadline_at: string;
-  completed_at: string | null;
-  duration_hours: number;
-  status: string;
-};
-
-type RequestSummary = {
-  id: string;
-  request_number: string;
-  title: string;
-  department: string;
-  amount: number;
-  status: string;
-  routed_to: string | null;
-};
-
-type DashboardStage = StageRow & {
-  request: RequestSummary | undefined;
-  sla: ReturnType<typeof calculateStageSla>;
-};
-
-function formatDuration(hours: number): string {
-  const absolute = Math.abs(hours);
-
-  const days = Math.floor(absolute / 24);
-  const remainingHours = Math.floor(absolute % 24);
-  const minutes = Math.floor((absolute * 60) % 60);
-
-  const parts: string[] = [];
-
-  if (days > 0) parts.push(`${days}d`);
-  if (remainingHours > 0) parts.push(`${remainingHours}h`);
-  if (minutes > 0 && days === 0) parts.push(`${minutes}m`);
-
-  return parts.length ? parts.join(" ") : "Less than 1 minute";
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return "—";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return "Invalid date";
-
-  return date.toLocaleString();
-}
 
 function SlaBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -113,152 +65,27 @@ function SlaBadge({ status }: { status: string }) {
 }
 
 function SlaDashboardPage() {
-  const [stages, setStages] = useState<StageRow[]>([]);
+  const { stages, requestsById, loading, refreshing, error, lastUpdated, refresh } =
+    useSlaDashboard();
 
-  const [requestsById, setRequestsById] = useState<Record<string, RequestSummary>>({});
-
-  const [loading, setLoading] = useState(true);
-
-  const [refreshing, setRefreshing] = useState(false);
-
-  const [error, setError] = useState<string | null>(null);
-
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-
-  const loadDashboard = useCallback(async () => {
-    setRefreshing(true);
-    setError(null);
-
-    try {
-      const { data: stageData, error: stageError } = await approvalStageClient
-        .from("approval_stage_tracking")
-        .select(
-          "id, request_id, stage_order, queue_id, stage_name, started_at, deadline_at, completed_at, duration_hours, status",
-        )
-        .order("started_at", { ascending: false });
-
-      if (stageError) {
-        throw new Error(`Could not load SLA stages: ${stageError.message}`);
-      }
-
-      const stageRows = (stageData ?? []) as StageRow[];
-
-      const requestIds = [...new Set(stageRows.map((stage) => stage.request_id))];
-
-      let requestRows: RequestSummary[] = [];
-
-      if (requestIds.length > 0) {
-        const { data: requestData, error: requestError } = await supabase
-          .from("financial_requests")
-          .select("id, request_number, title, department, amount, status, routed_to")
-          .in("id", requestIds);
-
-        if (requestError) {
-          throw new Error(`Could not load request details: ${requestError.message}`);
-        }
-
-        requestRows = (requestData ?? []) as RequestSummary[];
-      }
-
-      const requestMap: Record<string, RequestSummary> = {};
-
-      requestRows.forEach((request) => {
-        requestMap[request.id] = request;
-      });
-
-      setStages(stageRows);
-      setRequestsById(requestMap);
-      setLastUpdated(new Date());
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error ? loadError.message : "Unable to load the SLA dashboard.",
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadDashboard();
-  }, [loadDashboard]);
-
-  const dashboardStages = useMemo<DashboardStage[]>(() => {
-    const now = new Date();
-
-    return stages.map((stage) => ({
-      ...stage,
-      request: requestsById[stage.request_id],
-      sla: calculateStageSla(
-        {
-          stageName: stage.stage_name,
-          startedAt: stage.started_at,
-          durationHours: stage.duration_hours,
-          completedAt:
-            stage.status === "active"
-              ? stage.completed_at
-              : (stage.completed_at ?? stage.started_at),
-        },
-        now,
-      ),
-    }));
-  }, [stages, requestsById]);
-
-  const activeStages = dashboardStages.filter((stage) => stage.status === "active");
-
-  const approachingStages = activeStages.filter((stage) => stage.sla.status === "approaching");
-
-  const overdueStages = activeStages.filter((stage) => stage.sla.status === "overdue");
-
-  const completedStages = dashboardStages.filter((stage) => stage.status === "completed");
-
-  const onTrackStages = activeStages.filter((stage) => stage.sla.status === "on_track");
-
-  const activeSorted = [...activeStages].sort(
-    (a, b) => a.sla.remainingHours - b.sla.remainingHours,
+  // SLA values are a snapshot of when the data last changed, not of each render.
+  const dashboardStages = useMemo(
+    () => buildDashboardStages(stages, requestsById, new Date()),
+    [stages, requestsById],
   );
 
-  const recentCompleted = [...completedStages]
-    .sort(
-      (a, b) =>
-        new Date(b.completed_at ?? b.started_at).getTime() -
-        new Date(a.completed_at ?? a.started_at).getTime(),
-    )
-    .slice(0, 10);
-
-  const queuePerformance = useMemo(() => {
-    const groups = new Map<string, { name: string; totalHours: number; count: number }>();
-
-    completedStages.forEach((stage) => {
-      if (!stage.completed_at) return;
-
-      const durationHours =
-        (new Date(stage.completed_at).getTime() - new Date(stage.started_at).getTime()) /
-        (60 * 60 * 1000);
-
-      if (!Number.isFinite(durationHours) || durationHours < 0) return;
-
-      const existing = groups.get(stage.queue_id);
-
-      if (existing) {
-        existing.totalHours += durationHours;
-        existing.count += 1;
-      } else {
-        groups.set(stage.queue_id, {
-          name: stage.stage_name,
-          totalHours: durationHours,
-          count: 1,
-        });
-      }
-    });
-
-    return [...groups.entries()].map(([queueId, group]) => ({
-      queueId,
-      name: group.name,
-      count: group.count,
-      averageHours: group.totalHours / group.count,
-    }));
-  }, [completedStages]);
+  const {
+    activeStages,
+    onTrackStages,
+    approachingStages,
+    overdueStages,
+    completedStages,
+    activeSorted,
+    recentCompleted,
+    queuePerformance,
+    totalStages,
+    requestCount,
+  } = useMemo(() => summarizeDashboardStages(dashboardStages), [dashboardStages]);
 
   const kpis = [
     {
@@ -330,7 +157,7 @@ function SlaDashboardPage() {
 
         <button
           type="button"
-          onClick={() => void loadDashboard()}
+          onClick={() => void refresh()}
           disabled={refreshing}
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
         >
@@ -489,9 +316,7 @@ function SlaDashboardPage() {
                     </td>
 
                     <td className="whitespace-nowrap px-5 py-4 font-medium text-foreground">
-                      {stage.sla.remainingHours < 0
-                        ? `Overdue by ${formatDuration(stage.sla.remainingHours)}`
-                        : `${formatDuration(stage.sla.remainingHours)} left`}
+                      {formatRemainingTime(stage.sla.remainingHours)}
                     </td>
 
                     <td className="px-5 py-4">
@@ -578,11 +403,7 @@ function SlaDashboardPage() {
 
               <tbody className="divide-y divide-border">
                 {recentCompleted.map((stage) => {
-                  const elapsedHours = stage.completed_at
-                    ? (new Date(stage.completed_at).getTime() -
-                        new Date(stage.started_at).getTime()) /
-                      (60 * 60 * 1000)
-                    : 0;
+                  const elapsedHours = getCompletedStageElapsedHours(stage);
 
                   return (
                     <tr key={stage.id}>
@@ -618,9 +439,9 @@ function SlaDashboardPage() {
 
       {/* Summary Footer */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground">
-        <span>Total tracked stages: {dashboardStages.length}</span>
+        <span>Total tracked stages: {totalStages}</span>
 
-        <span>Requests represented: {new Set(stages.map((stage) => stage.request_id)).size}</span>
+        <span>Requests represented: {requestCount}</span>
 
         <span>Active stages: {activeStages.length}</span>
       </div>
