@@ -1,5 +1,3 @@
-import type { ReactNode } from "react";
-
 export type AnalyticsKpi = {
   label: string;
   value: string;
@@ -14,7 +12,7 @@ export default function AnalyticsSummaryCards({
 }: AnalyticsSummaryCardsProps) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {items.map((item): ReactNode => (
+      {items.map((item) => (
         <div
           key={item.label}
           className="rounded-2xl border border-border bg-card p-5 shadow-sm"
