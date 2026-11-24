@@ -58,7 +58,7 @@ The suite uses controlled response objects, including success, 4xx, 429, 5xx, ne
 
 | Check | Status |
 |---|---|
-| Test cases authored | 21 |
+| Test cases authored | 22 |
 | Target module has a dedicated test file | Yes |
 | Expected payload mapped to F7 contract | Reviewed against repository docs/source |
 | Network and retry behavior isolated with test doubles | Yes |
