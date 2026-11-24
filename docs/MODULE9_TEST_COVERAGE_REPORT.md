@@ -6,7 +6,7 @@
 **Repository:** https://github.com/jjoiles/Financial_Management_System_Group3  
 **Branch:** `test/module9-power-automate-coverage`  
 **Related feature:** F7 — Power Automate Workflow Initialization  
-**Report status:** Test changes prepared; full-suite execution and CI verification pending
+**Report status:** PR #351 open and mergeable; local test execution and CI verification pending
 
 ## 1. Purpose
 
@@ -99,7 +99,7 @@ Capture the terminal output or CI run URL after each command. If a test fails, c
 - Feature: [F7 — Power Automate Workflow Initialization](https://github.com/jjoiles/Financial_Management_System_Group3/issues/7)
 - Test-related backlog: [F7.4 — Verify Workflow Initialization](https://github.com/jjoiles/Financial_Management_System_Group3/issues/268)
 - Failure/retry test scope: [F7.4.3 — Test flow failure and idempotent retries](https://github.com/jjoiles/Financial_Management_System_Group3/issues/310)
-- New test-focused PR: to be linked after creation.
+- New test-focused PR: [#351 — Module 9: Add Power Automate workflow client tests](https://github.com/jjoiles/Financial_Management_System_Group3/pull/351) (open; no workflow run reported for the current head commit at report preparation).
 
 ## 9. Acceptance summary
 
