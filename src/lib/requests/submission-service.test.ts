@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { addLogSink, type LogEntry } from "../logger";
 import { createSubmissionService } from "./submission-service";
 import type { SubmissionCommand, SubmissionPorts } from "./submission-types";
 
@@ -253,6 +254,26 @@ describe("request submission behavior", () => {
     expect(ports.savePrototypeAttachments).toHaveBeenCalledWith(saved.id, USER_ID, files);
     expect(ports.uploadAttachment).not.toHaveBeenCalled();
     expect(ports.startWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("F5.4.3 (#283): logs a failed insert as an error with the error details", async () => {
+    const { submit, ports, command } = setup();
+    ports.insertRequest.mockRejectedValue(new Error("Failed to fetch"));
+    const entries: LogEntry[] = [];
+    const remove = addLogSink((entry) => entries.push(entry));
+    try {
+      await submit(command);
+    } finally {
+      remove();
+    }
+    const failed = entries.find(
+      (entry) => entry.event === "request.insert_failed_prototype_fallback",
+    );
+    expect(failed).toMatchObject({
+      level: "error",
+      context: { requestNumber: expect.stringMatching(/^FR-2026-/) },
+    });
+    expect(JSON.stringify(failed?.context.error)).toContain("Failed to fetch");
   });
 
   it("continues after a returned upload error and links only successful files", async () => {
