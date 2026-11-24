@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080" role="img" aria-labelledby="title desc">
+  <title id="title">FinReq updated architecture after Module 7 analytics refactor</title>
+  <desc id="desc">Layered architecture diagram showing the browser presentation layer, application services, Supabase platform, and optional Power Automate integration. Analytics route composes two extracted presentation components.</desc>
+  <defs>
+    <style>
+      .bg{fill:#f7f9fc}.panel{fill:#ffffff;stroke:#cbd5e1;stroke-width:2;rx:18}
+      .layer{font:700 22px Arial,sans-serif;fill:#18324b}
+      .head{font:700 18px Arial,sans-serif;fill:#16324f}
+      .body{font:15px Arial,sans-serif;fill:#30475e}
+      .small{font:13px Arial,sans-serif;fill:#52677d}
+      .accent{fill:#e8f2ff;stroke:#5b8cc9;stroke-width:2;rx:12}
+      .green{fill:#e8f6ef;stroke:#4d9c73;stroke-width:2;rx:12}
+      .purple{fill:#f1ecff;stroke:#8566c7;stroke-width:2;rx:12}
+      .orange{fill:#fff2e4;stroke:#c98a43;stroke-width:2;rx:12}
+      .line{stroke:#647b91;stroke-width:3;fill:none;marker-end:url(#arrow)}
+      .dash{stroke:#9a7a4b;stroke-width:2.5;stroke-dasharray:8 7;fill:none;marker-end:url(#arrowOrange)}
+      .tag{font:700 12px Arial,sans-serif;fill:#fff}
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#647b91"/></marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#9a7a4b"/></marker>
+  </defs>
+  <rect class="bg" width="1600" height="1080"/>
+  <text x="70" y="58" style="font:700 32px Arial,sans-serif;fill:#17324d">FinReq — Updated Project Architecture</text>
+  <text x="70" y="88" class="small">Module 7 structural refactor · Analytics presentation separated from route orchestration · Group 3</text>
+
+  <rect x="55" y="120" width="1490" height="300" class="panel"/>
+  <text x="85" y="160" class="layer">1. Client / Presentation Layer</text>
+  <rect x="90" y="185" width="400" height="88" class="accent"/>
+  <text x="115" y="219" class="head">TanStack Router pages</text>
+  <text x="115" y="246" class="body">Login · Overview · Submit · Requests · Tracking · SLA · Analytics</text>
+  <rect x="90" y="302" width="400" height="80" class="purple"/>
+  <text x="115" y="335" class="head">Shared React components</text>
+  <text x="115" y="360" class="body">Header · Sidebar · Notifications · Dialogs</text>
+
+  <rect x="555" y="185" width="420" height="197" class="green"/>
+  <text x="580" y="219" class="head">Analytics route (orchestration)</text>
+  <text x="580" y="248" class="body">Access checks · request data selection</text>
+  <text x="580" y="273" class="body">Reporting-window state · summary derivation</text>
+  <text x="580" y="298" class="body">CSV export · page composition</text>
+  <rect x="580" y="320" width="177" height="43" class="accent"/>
+  <text x="594" y="347" class="small" style="font-weight:700">SummaryCards</text>
+  <rect x="775" y="320" width="175" height="43" class="accent"/>
+  <text x="789" y="347" class="small" style="font-weight:700">Visualizations</text>
+  <rect x="1040" y="185" width="450" height="88" class="purple"/>
+  <text x="1065" y="219" class="head">Auth context + MFA</text>
+  <text x="1065" y="246" class="body">Session · verified factor · available roles</text>
+  <rect x="1040" y="302" width="450" height="80" class="purple"/>
+  <text x="1065" y="335" class="head">Application RBAC</text>
+  <text x="1065" y="360" class="body">Route and action visibility checks</text>
+
+  <path d="M490 229 H555" class="line"/>
+  <path d="M975 229 H1040" class="line"/>
+  <path d="M765 273 V320" class="line"/>
+  <path d="M855 273 V320" class="line"/>
+
+  <rect x="55" y="460" width="1490" height="245" class="panel"/>
+  <text x="85" y="500" class="layer">2. Application / Domain Services</text>
+  <rect x="90" y="530" width="330" height="125" class="accent"/>
+  <text x="115" y="565" class="head">Request processing</text>
+  <text x="115" y="592" class="body">Submission service · Zod validation</text>
+  <text x="115" y="617" class="body">File validation · routing engine</text>
+  <rect x="455" y="530" width="330" height="125" class="green"/>
+  <text x="480" y="565" class="head">Workflow and SLA</text>
+  <text x="480" y="592" class="body">Approval stage tracking · SLA utilities</text>
+  <text x="480" y="617" class="body">Workflow initialization</text>
+  <rect x="820" y="530" width="330" height="125" class="purple"/>
+  <text x="845" y="565" class="head">Activity and notifications</text>
+  <text x="845" y="592" class="body">Database-generated workflow events</text>
+  <text x="845" y="617" class="body">Requester notification service</text>
+  <rect x="1185" y="530" width="305" height="125" class="orange"/>
+  <text x="1210" y="565" class="head">Analytics utilities</text>
+  <text x="1210" y="592" class="body">Summary calculations</text>
+  <text x="1210" y="617" class="body">Reporting data · CSV serializer</text>
+
+  <path d="M280 420 V530" class="line"/>
+  <path d="M665 420 V530" class="line"/>
+  <path d="M985 420 V530" class="line"/>
+  <path d="M1370 420 V530" class="line"/>
+
+  <rect x="55" y="745" width="1490" height="250" class="panel"/>
+  <text x="85" y="785" class="layer">3. Supabase Platform / Data Layer</text>
+  <rect x="90" y="815" width="315" height="135" class="green"/>
+  <text x="115" y="850" class="head">Supabase Auth</text>
+  <text x="115" y="877" class="body">Identity · session · MFA</text>
+  <text x="115" y="905" class="small">Authentication boundary</text>
+  <rect x="445" y="815" width="590" height="135" class="accent"/>
+  <text x="470" y="850" class="head">PostgreSQL</text>
+  <text x="470" y="877" class="body">financial_requests · user_roles · profiles</text>
+  <text x="470" y="902" class="body">workflow_events · request_attachments · approval stages</text>
+  <text x="470" y="928" class="small">RLS policies · grants · trusted functions · database triggers</text>
+  <rect x="1075" y="815" width="415" height="135" class="purple"/>
+  <text x="1100" y="850" class="head">Supabase Storage</text>
+  <text x="1100" y="877" class="body">Request attachments</text>
+  <text x="1100" y="905" class="small">Object paths and access policies</text>
+
+  <path d="M255 655 V725 H245 V815" class="line"/>
+  <path d="M620 655 V725 H740 V815" class="line"/>
+  <path d="M985 655 V725 H740 V815" class="line"/>
+  <path d="M1350 655 V725 H740 V815" class="line"/>
+  <path d="M405 880 H445" class="line"/>
+  <path d="M1035 880 H1075" class="line"/>
+
+  <rect x="55" y="1015" width="1490" height="45" class="orange"/>
+  <text x="80" y="1043" class="body" style="font-weight:700">External workflow: server-side initialization → Power Automate when configured; otherwise the application reports simulated mode.</text>
+</svg>
