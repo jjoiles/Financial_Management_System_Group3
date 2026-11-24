@@ -6,7 +6,7 @@
 **Repository:** https://github.com/jjoiles/Financial_Management_System_Group3  
 **Branch:** `test/module9-power-automate-coverage`  
 **Related feature:** F7 — Power Automate Workflow Initialization  
-**Report status:** PR #351 open and mergeable; local test execution and CI verification pending
+**Report status:** PR #351 is open; local test execution and CI verification are pending
 
 ## 1. Purpose
 
