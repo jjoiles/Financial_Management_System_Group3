@@ -1,19 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from "recharts";
-import {
   ArrowUpRight,
   Download,
   Filter,
@@ -21,7 +8,14 @@ import {
   Gauge,
   TrendingUp,
 } from "lucide-react";
-import { mockRequests, fundingDistribution, turnaroundData } from "@/lib/mock-data";
+
+import AnalyticsSummaryCards from "@/components/analytics/AnalyticsSummaryCards";
+import AnalyticsVisualizations from "@/components/analytics/AnalyticsVisualizations";
+import {
+  fundingDistribution,
+  mockRequests,
+  turnaroundData,
+} from "@/lib/mock-data";
 import { useFinancialRequests } from "@/lib/requests-data";
 import { buildFinancialReportCsv } from "@/lib/csv-export";
 import {
@@ -43,22 +37,20 @@ export const Route = createFileRoute("/analytics")({
   head: () => ({
     meta: [
       { title: "Analytics — FinReq" },
-      { name: "description", content: "Financial request analytics and insights dashboard." },
+      {
+        name: "description",
+        content: "Financial request analytics and insights dashboard.",
+      },
       { property: "og:title", content: "Analytics — FinReq" },
-      { property: "og:description", content: "Financial request analytics and insights dashboard." },
+      {
+        property: "og:description",
+        content: "Financial request analytics and insights dashboard.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
   }),
 });
-
-const COLORS = [
-  "var(--color-chart-1)",
-  "var(--color-chart-2)",
-  "var(--color-chart-3)",
-  "var(--color-chart-4)",
-  "var(--color-chart-5)",
-];
 
 type WindowKey = ReportingWindow;
 
@@ -72,7 +64,7 @@ function AnalyticsPage() {
   const sourceRequests = requests.length ? requests : mockRequests;
   const [windowKey, setWindowKey] = useState<WindowKey>("Month");
 
-  // Lab 3: Keep business calculations separate from dashboard rendering.
+  // Keep calculations independent of the presentation components.
   const summary = useMemo(
     () => calculateAnalyticsSummary(sourceRequests),
     [sourceRequests],
@@ -91,8 +83,12 @@ function AnalyticsPage() {
     });
     return (
       <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6">
-        <h1 className="text-lg font-semibold text-foreground">{unauthorized.title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{unauthorized.message}</p>
+        <h1 className="text-lg font-semibold text-foreground">
+          {unauthorized.title}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {unauthorized.message}
+        </p>
       </div>
     );
   }
@@ -141,7 +137,7 @@ function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold font-[family-name:var(--font-display)] text-foreground">
             Real-Time Reporting Templates
@@ -157,7 +153,9 @@ function AnalyticsPage() {
             <select
               aria-label="Select reporting window"
               value={windowKey}
-              onChange={(event) => setWindowKey(event.target.value as WindowKey)}
+              onChange={(event) =>
+                setWindowKey(event.target.value as WindowKey)
+              }
               className="bg-transparent pr-1 text-sm text-foreground outline-none"
             >
               <option value="Week">Week</option>
@@ -176,121 +174,39 @@ function AnalyticsPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {kpis.map((k) => (
-          <div key={k.label} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <p className="text-xs text-muted-foreground">{k.label}</p>
-            <p className="mt-1 text-2xl font-bold font-[family-name:var(--font-display)] text-card-foreground">
-              {k.value}
-            </p>
-          </div>
-        ))}
-      </div>
+      <AnalyticsSummaryCards items={kpis} />
 
       <div className="grid gap-4 xl:grid-cols-3">
         {templates.map(({ title, description, icon: Icon, trend }) => (
-          <div key={title} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div
+            key={title}
+            className="rounded-2xl border border-border bg-card p-5 shadow-sm"
+          >
             <div className="flex items-center justify-between">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Icon className="h-5 w-5" />
               </div>
               <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
             </div>
-            <h3 className="mt-4 text-base font-semibold text-card-foreground">{title}</h3>
-            <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-            <p className="mt-4 text-xs font-medium uppercase tracking-wide text-primary">{trend}</p>
+            <h3 className="mt-4 text-base font-semibold text-card-foreground">
+              {title}
+            </h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {description}
+            </p>
+            <p className="mt-4 text-xs font-medium uppercase tracking-wide text-primary">
+              {trend}
+            </p>
           </div>
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <h3 className="mb-4 text-sm font-semibold font-[family-name:var(--font-display)] text-card-foreground">
-            {windowKey} Requests
-          </h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={timeWindowData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-              <YAxis tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "var(--color-card)",
-                  border: "1px solid var(--color-border)",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                }}
-              />
-              <Bar dataKey="submitted" fill={COLORS[0]} radius={[4, 4, 0, 0]} name="Submitted" />
-              <Bar dataKey="approved" fill={COLORS[1]} radius={[4, 4, 0, 0]} name="Approved" />
-              <Bar dataKey="rejected" fill={COLORS[4]} radius={[4, 4, 0, 0]} name="Rejected" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <h3 className="mb-4 text-sm font-semibold font-[family-name:var(--font-display)] text-card-foreground">
-            Funding Distribution
-          </h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <PieChart>
-              <Pie
-                data={fundingDistribution}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={90}
-                paddingAngle={3}
-                dataKey="value"
-                nameKey="name"
-              >
-                {fundingDistribution.map((_, i) => (
-                  <Cell key={i} fill={COLORS[i]} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "var(--color-card)",
-                  border: "1px solid var(--color-border)",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                }}
-              />
-              <Legend
-                formatter={(value: string) => <span style={{ fontSize: "11px" }}>{value}</span>}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-        <h3 className="mb-4 text-sm font-semibold font-[family-name:var(--font-display)] text-card-foreground">
-          Avg. Approval Turnaround by Department (days)
-        </h3>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={turnaroundData} layout="vertical">
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-            <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" />
-            <YAxis
-              dataKey="department"
-              type="category"
-              tick={{ fontSize: 11 }}
-              width={90}
-              stroke="var(--color-muted-foreground)"
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "var(--color-card)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "8px",
-                fontSize: "12px",
-              }}
-            />
-            <Bar dataKey="days" fill={COLORS[0]} radius={[0, 4, 4, 0]} name="Days" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      <AnalyticsVisualizations
+        windowKey={windowKey}
+        timeWindowData={timeWindowData}
+        fundingDistribution={fundingDistribution}
+        turnaroundData={turnaroundData}
+      />
     </div>
   );
 }
