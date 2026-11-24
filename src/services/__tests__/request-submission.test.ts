@@ -204,4 +204,63 @@ describe("submitFinancialRequest", () => {
     expect(outcome.result.id).toBe("FR-2026-ABC123");
     expect(outcome.result.workflow).toBe("Started in Power Automate");
   });
+
+  it("integrates research validation, routing, persistence, and workflow startup", async () => {
+    backend.insertResponses = [{ data: savedRow, error: null }];
+    initializeWorkflow.mockResolvedValue({
+      mode: "simulated",
+      alreadyInitialized: false,
+      routedTo: "Research Administration",
+      message: "",
+    });
+
+    const parsed = validateSubmission({
+      requesterEmail: "faculty@howard.edu",
+      department: "Chemistry",
+      amount: "30000",
+      fundingSource: "research",
+      grantNumber: "GR-123",
+      principalInvestigator: "Ada Lovelace",
+      neededBy: "2030-01-15",
+      priority: "medium",
+      description: "Research equipment for the laboratory",
+    });
+
+    if (!parsed.ok) throw new Error(`fixture invalid: ${JSON.stringify(parsed.errors)}`);
+
+    const outcome = await submitFinancialRequest({
+      input: parsed.data,
+      userId: USER_ID,
+      files: [],
+    });
+
+    expect(outcome.kind).toBe("submitted");
+    if (outcome.kind !== "submitted") return;
+
+    const expectedQueues = ["research_admin", "sponsored_programs", "cfo_office"];
+
+    expect(backend.insertedPayloads[0]).toMatchObject({
+      funding_source: "research",
+      amount: 30000,
+      routed_to: "Research Administration",
+      metadata: {
+        routing: {
+          primaryQueue: "research_admin",
+          approvalChain: expect.arrayContaining([
+            expect.objectContaining({ queue: "research_admin" }),
+            expect.objectContaining({ queue: "sponsored_programs" }),
+            expect.objectContaining({ queue: "cfo_office" }),
+          ]),
+          flags: expect.arrayContaining(["high_value", "multi_level"]),
+        },
+      },
+    });
+
+    expect(outcome.result.routing.approvalChain.map((step) => step.queue)).toEqual(expectedQueues);
+    expect(outcome.result.routedTo).toBe("Research Administration");
+    expect(initializeWorkflow).toHaveBeenCalledWith({
+      data: { requestId: "row-1" },
+      headers: { Authorization: "Bearer test-token" },
+    });
+  });
 });
