@@ -3,9 +3,9 @@ import { routeRequest } from "../routing/engine";
 import {
   createRequestNumber,
   generateRequestMetadataSafe,
-  sanitizeFileName,
   verifyMetadataAssociation,
 } from "../request-utils";
+import { buildSafeStoragePath } from "../file-validation";
 import {
   buildValidatedPayload,
   isDatabaseValidationError,
@@ -149,7 +149,12 @@ export function createSubmissionService(ports: SubmissionPorts): SubmissionServi
 
       try {
         for (const file of files) {
-          const path = `${userId}/${inserted.id}/${ports.now().getTime()}-${sanitizeFileName(file.name)}`;
+          const path = buildSafeStoragePath({
+            userId,
+            requestId: inserted.id,
+            fileName: file.name,
+            timestampMs: ports.now().getTime(),
+          });
           const upload = await ports.uploadAttachment(path, file);
           if (upload.error) {
             logger.error("attachment.upload_failed", {
