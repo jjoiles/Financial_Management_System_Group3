@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getRecentLogs } from "../logger";
 import { createSubmissionService } from "./submission-service";
 import type { SubmissionCommand, SubmissionPorts } from "./submission-types";
 
@@ -14,10 +15,6 @@ function setup() {
       .fn<SubmissionPorts["uploadAttachment"]>()
       .mockResolvedValue({ error: null }),
     linkAttachment: vi.fn<SubmissionPorts["linkAttachment"]>().mockResolvedValue({ error: null }),
-    savePrototypeRequest: vi
-      .fn<SubmissionPorts["savePrototypeRequest"]>()
-      .mockReturnValue({ ...saved, prototype: true }),
-    savePrototypeAttachments: vi.fn<SubmissionPorts["savePrototypeAttachments"]>(),
     startWorkflow: vi.fn<SubmissionPorts["startWorkflow"]>().mockResolvedValue({
       mode: "simulated",
       alreadyInitialized: false,
@@ -66,7 +63,6 @@ describe("request submission behavior", () => {
       message: "Please sign in before submitting a financial request.",
     });
     expect(ports.insertRequest).not.toHaveBeenCalled();
-    expect(ports.savePrototypeRequest).not.toHaveBeenCalled();
   });
 
   it("returns field errors without writing an invalid form", async () => {
@@ -180,19 +176,16 @@ describe("request submission behavior", () => {
     expect(await submit(command)).toMatchObject({ ok: true });
     expect(ports.insertRequest).toHaveBeenCalledTimes(3);
     expect(ports.wait.mock.calls).toEqual([[800], [1600]]);
-    expect(ports.savePrototypeRequest).not.toHaveBeenCalled();
   });
 
-  it("stops retrying after six attempts and retains the prototype warning", async () => {
+  it("stops retrying after six attempts and returns a backend error", async () => {
     const { submit, ports, command } = setup();
     ports.insertRequest.mockRejectedValue({ message: "schema cache unavailable" });
-    expect(await submit(command)).toMatchObject({
-      ok: true,
-      result: {
-        workflow: "Simulated (prototype mode)",
-        warning:
-          "Saved in prototype mode. The hosted backend was temporarily unavailable. Attachments and workflow were simulated.",
-      },
+    expect(await submit(command)).toEqual({
+      ok: false,
+      errors: {},
+      message:
+        "The request could not be saved because the backend was temporarily unavailable. Please try again in a moment.",
     });
     expect(ports.insertRequest).toHaveBeenCalledTimes(6);
     expect(ports.wait.mock.calls).toEqual([[800], [1600], [3200], [6400], [8000]]);
@@ -205,26 +198,24 @@ describe("request submission behavior", () => {
     ports.findRequest.mockResolvedValue(saved);
     expect(await submit(command)).toMatchObject({ ok: true });
     expect(ports.findRequest).toHaveBeenCalledWith(expect.stringMatching(/^FR-2026-/));
-    expect(ports.savePrototypeRequest).not.toHaveBeenCalled();
   });
 
-  it("retains fallback when a duplicate cannot be recovered", async () => {
+  it("returns an error when a duplicate cannot be recovered", async () => {
     const { submit, ports, command } = setup();
     ports.insertRequest.mockRejectedValue({ code: "23505" });
     ports.findRequest.mockRejectedValue(new Error("Lookup unavailable"));
-    expect(await submit(command)).toMatchObject({
-      ok: true,
-      result: {
-        workflow: "Simulated (prototype mode)",
-        warning:
-          "Saved in prototype mode. Lookup unavailable Attachments and workflow were simulated.",
-      },
+    expect(await submit(command)).toEqual({
+      ok: false,
+      errors: {},
+      message:
+        "The request could not be saved. Please try again. If the problem continues, contact the FinReq team.",
     });
     expect(ports.wait).not.toHaveBeenCalled();
+    expect(ports.startWorkflow).not.toHaveBeenCalled();
   });
 
   it.each(["23514", "P0001", "22P02"])(
-    "does not turn database validation error %s into prototype success",
+    "does not turn database validation error %s into a generic failure",
     async (code) => {
       const { submit, ports, command } = setup();
       ports.insertRequest.mockRejectedValue({ code, hint: "financial_requests_amount_range" });
@@ -233,24 +224,31 @@ describe("request submission behavior", () => {
         errors: { amount: expect.any(String) },
         message: "The server rejected one or more fields. Review the highlighted fields.",
       });
-      expect(ports.savePrototypeRequest).not.toHaveBeenCalled();
       expect(ports.uploadAttachment).not.toHaveBeenCalled();
       expect(ports.startWorkflow).not.toHaveBeenCalled();
     },
   );
 
-  it("keeps generic insert failures in prototype storage with attachments", async () => {
+  it("shows an error and logs it when the insert fails, without saving locally", async () => {
     const { submit, ports, command } = setup();
-    ports.insertRequest.mockRejectedValue(new Error("Backend offline"));
+    const insertError = new Error("permission denied for function is_admin_or_reviewer");
+    ports.insertRequest.mockRejectedValue(insertError);
     const files = [new File(["a"], "a.pdf")];
-    expect(await submit({ ...command, files })).toMatchObject({
-      ok: true,
-      result: {
-        warning:
-          "Saved in prototype mode. Backend offline Attachments and workflow were simulated.",
-      },
+    expect(await submit({ ...command, files })).toEqual({
+      ok: false,
+      errors: {},
+      message:
+        "The request could not be saved. Please try again. If the problem continues, contact the FinReq team.",
     });
-    expect(ports.savePrototypeAttachments).toHaveBeenCalledWith(saved.id, USER_ID, files);
+    expect(console.error).toHaveBeenCalledWith(
+      "[finreq] request.insert_failed",
+      expect.objectContaining({ requestNumber: expect.stringMatching(/^FR-2026-/) }),
+    );
+    expect(getRecentLogs().at(-1)).toMatchObject({
+      level: "error",
+      event: "request.insert_failed",
+      context: { error: expect.objectContaining({ message: insertError.message }) },
+    });
     expect(ports.uploadAttachment).not.toHaveBeenCalled();
     expect(ports.startWorkflow).not.toHaveBeenCalled();
   });
@@ -262,15 +260,13 @@ describe("request submission behavior", () => {
     expect(await submit({ ...command, files })).toMatchObject({
       ok: true,
       result: {
-        warning:
-          "Your request was saved, but one or more attachments could not be uploaded, so attachment storage was simulated.",
+        warning: "Your request was saved, but one or more attachments could not be uploaded.",
       },
     });
     expect(ports.linkAttachment).toHaveBeenCalledTimes(1);
     expect(ports.linkAttachment).toHaveBeenCalledWith(
       expect.objectContaining({ file_name: "b.pdf" }),
     );
-    expect(ports.savePrototypeAttachments).not.toHaveBeenCalled();
     expect(ports.startWorkflow).toHaveBeenCalled();
   });
 
@@ -280,15 +276,14 @@ describe("request submission behavior", () => {
     expect(await submit({ ...command, files: [new File(["a"], "a.pdf")] })).toMatchObject({
       ok: true,
       result: {
-        warning:
-          "Your request was saved, but one or more attachments could not be linked, so attachment tracking was simulated.",
+        warning: "Your request was saved, but one or more attachments could not be linked to it.",
       },
     });
     expect(ports.startWorkflow).toHaveBeenCalled();
   });
 
   it.each(["uploadAttachment", "linkAttachment"] as const)(
-    "preserves prototype attachment fallback when %s throws",
+    "warns that attachments were not uploaded when %s throws",
     async (method) => {
       const { submit, ports, command } = setup();
       ports[method].mockRejectedValue(new Error("Network failed"));
@@ -297,10 +292,9 @@ describe("request submission behavior", () => {
         ok: true,
         result: {
           warning:
-            "Your request was saved, but attachment storage is not connected right now, so attachments were simulated.",
+            "Your request was saved, but attachment storage is not available right now, so attachments were not uploaded.",
         },
       });
-      expect(ports.savePrototypeAttachments).toHaveBeenCalledWith(saved.id, USER_ID, files);
       expect(ports.startWorkflow).toHaveBeenCalled();
     },
   );
@@ -367,20 +361,7 @@ describe("request submission behavior", () => {
     });
   });
 
-  it("returns an error when prototype persistence itself fails", async () => {
-    const { submit, ports, command } = setup();
-    ports.insertRequest.mockRejectedValue(new Error("Offline"));
-    ports.savePrototypeRequest.mockImplementation(() => {
-      throw new Error("Storage quota exceeded");
-    });
-    expect(await submit(command)).toEqual({
-      ok: false,
-      errors: {},
-      message: "Storage quota exceeded",
-    });
-  });
-
-  it("blocks mislinked fallback metadata before persistence", async () => {
+  it("blocks mislinked metadata before persistence", async () => {
     const { submit, ports, command } = setup();
     expect(await submit({ ...command, userId: "invalid-id" })).toMatchObject({
       ok: false,

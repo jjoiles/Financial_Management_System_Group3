@@ -44,8 +44,6 @@ function TrackingPage() {
     () =>
       data.filter((r) => {
         if (!auth.user) return false;
-        // Local prototype rows: only show ones saved by this signed-in user.
-        if (r.prototype) return r.userId === auth.user.id;
         return r.userId === auth.user.id;
       }),
     [data, auth.user],
@@ -66,7 +64,7 @@ function TrackingPage() {
 
   useEffect(() => {
     if (loading || readIssue || !linkedRequestId || openedLink.current === linkedRequestId) return;
-    const linked = myRequests.find(row => row.uuid === linkedRequestId && !row.prototype);
+    const linked = myRequests.find(row => row.uuid === linkedRequestId);
     if (linked) {
       setSelected(linked);
       openedLink.current = linkedRequestId;
@@ -80,7 +78,6 @@ function TrackingPage() {
   const listState = getRequestListState(loading, filteredRequests.length, readIssue);
 
   const isFiltered = search.trim() !== "" || statusFilter !== "All";
-  const prototypeCount = filteredRequests.filter((r) => r.prototype).length;
   // Always read the open detail from the latest authorized rows, not a stale snapshot.
   const currentSelection = !readIssue && auth.user && !auth.needsMfa
     ? myRequests.find(row => row.uuid === selected?.uuid) ?? null : null;
@@ -124,7 +121,6 @@ function TrackingPage() {
             <RequestCountSummary
               matching={filteredRequests.length}
               total={myRequests.length}
-              prototypeCount={prototypeCount}
               isFiltered={isFiltered}
             />
           </div>
@@ -137,7 +133,7 @@ function TrackingPage() {
       )}
 
       <RequestReadNotice issue={readIssue} />
-      {!loading && !readIssue && linkedRequestId && !myRequests.some(row => row.uuid === linkedRequestId && !row.prototype) && (
+      {!loading && !readIssue && linkedRequestId && !myRequests.some(row => row.uuid === linkedRequestId) && (
         <p role="alert" className="text-sm text-muted-foreground">This request is unavailable or is not yours to view.</p>
       )}
 
@@ -238,14 +234,6 @@ function Group({
                       {req.title}
                     </h3>
                     <StatusBadge status={req.status} />
-                    {req.prototype && (
-                      <span
-                        title="Saved locally on this device only — not stored in the backend"
-                        className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning"
-                      >
-                        Prototype · local only
-                      </span>
-                    )}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {req.id} · {formatCurrency(req.amount)} · {req.fundingType} Fund

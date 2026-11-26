@@ -39,6 +39,7 @@
 - **Category:** Architectural Debt
 - **Description:** When Supabase database inserts fail for any reason, the submit form silently falls back to saving the request in the browser's `localStorage` under the key `prototype-financial-requests` (submit.tsx lines 222–227). The same pattern applies to attachments (`prototype-request-attachments`, line 156). The data-fetching hook in `requests-data.ts` then unconditionally merges these localStorage records with real database rows on every load (lines 103–104), making prototype data appear alongside real data. Worse, in `tracking.tsx` line 26, any request marked `prototype: true` is shown to any user on that browser regardless of ownership. This pattern was introduced because the second Supabase migration revokes `EXECUTE` permissions on the RLS helper functions `has_role` and `is_admin_or_reviewer`, causing all authenticated queries to fail. The AI generator added the localStorage fallback to work around this broken migration instead of fixing it.
 - **Remediation Plan:** Fix the root cause first: create a new migration that re-grants `EXECUTE` on `has_role` and `is_admin_or_reviewer` to the `authenticated` role so RLS policies work correctly. Once the database is functional, remove all `savePrototypeRequest`, `savePrototypeAttachments`, and `readPrototypeRequests` functions. Remove the `prototype` flag from the data types. Remove the `localStorage` merge logic from `useFinancialRequests`. If graceful offline behavior is desired later, implement it properly with a service worker and sync queue rather than silent data loss.
+- **Status:** Resolved in #127. The fallback, the `prototype` flag, and the localStorage merge are removed. A failed insert now returns an error to the user and is logged as `request.insert_failed`.
 
 ---
 
@@ -249,6 +250,7 @@
 - **Category:** Reliability / Hallucination
 - **Description:** When the database insert fails (due to the AI's own broken migration), the AI generated a localStorage-based fallback system (`savePrototypeRequest`, `savePrototypeAttachments` in submit.tsx lines 131–157) that silently stores financial requests in the browser. The AI then generated data-fetching code (`requests-data.ts` lines 103–104) that merges these localStorage records with real database rows, making them appear identical in the UI. This creates a situation where a user believes they submitted a financial request, but the data only exists in their browser's localStorage — it will be lost if they clear their cache, switch browsers, or use a different computer. The AI hallucinated a "solution" that creates data loss risk for financial documents.
 - **Remediation Plan:** Remove the entire prototype fallback system. If the database is unavailable, show a clear error message telling the user to try again later. Never silently degrade from a database to browser storage for financial records. Implement proper offline support via a service worker with a sync queue if offline capability is genuinely required.
+- **Status:** Resolved in #127 (see Item 4).
 
 ---
 

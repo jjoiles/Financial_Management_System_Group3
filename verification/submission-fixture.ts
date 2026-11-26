@@ -4,7 +4,7 @@ import type { SubmissionPorts } from "../src/lib/requests/submission-types";
 export const scenarios = [
   "success",
   "database validation",
-  "prototype fallback",
+  "backend unavailable",
   "workflow failure",
   "upload failure",
 ];
@@ -17,7 +17,7 @@ const ports: SubmissionPorts = {
   async insertRequest(payload) {
     if (scenario === "database validation")
       throw { code: "23514", hint: "financial_requests_amount_range" };
-    if (scenario === "prototype fallback") throw new Error("Fixture backend unavailable.");
+    if (scenario === "backend unavailable") throw new Error("Fixture backend unavailable.");
     return {
       id: crypto.randomUUID(),
       request_number: payload.request_number,
@@ -33,15 +33,6 @@ const ports: SubmissionPorts = {
   async linkAttachment() {
     return { error: null };
   },
-  savePrototypeRequest(_payload, requestNumber, createdAt) {
-    return {
-      id: crypto.randomUUID(),
-      request_number: requestNumber,
-      created_at: createdAt,
-      prototype: true,
-    };
-  },
-  savePrototypeAttachments() {},
   async startWorkflow() {
     return {
       mode: scenario === "workflow failure" ? "failed" : "simulated",

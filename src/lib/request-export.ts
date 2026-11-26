@@ -23,9 +23,6 @@ export function prepareRequestExport<T extends RequestListExportRow & { userId: 
 ) {
   const reason = requestExportBlockReason(context, visibleRows.length);
   if (reason) throw new Error(reason);
-  if (visibleRows.some(row => row.prototype && row.userId !== context.userId)) {
-    throw new Error("Access restricted. A locally saved request does not belong to your account.");
-  }
   return {
     csv: buildRequestListCsv(visibleRows),
     filename: `financial-requests-${now.toISOString().slice(0, 10)}.csv`,

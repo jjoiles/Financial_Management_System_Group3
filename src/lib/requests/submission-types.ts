@@ -7,7 +7,6 @@ export type SavedRequest = {
   id: string;
   request_number: string;
   created_at: string;
-  prototype?: boolean;
 };
 
 export type AttachmentRecord = {
@@ -35,8 +34,7 @@ export type SubmissionCommand = {
 };
 
 export type SubmissionOutcome =
-  | { ok: true; result: SubmissionResult }
-  | { ok: false; errors: FormErrors; message: string };
+  { ok: true; result: SubmissionResult } | { ok: false; errors: FormErrors; message: string };
 
 export type SubmissionService = (command: SubmissionCommand) => Promise<SubmissionOutcome>;
 
@@ -46,12 +44,6 @@ export type SubmissionPorts = {
   findRequest: (requestNumber: string) => Promise<SavedRequest | null>;
   uploadAttachment: (path: string, file: File) => Promise<{ error: unknown }>;
   linkAttachment: (record: AttachmentRecord) => Promise<{ error: unknown }>;
-  savePrototypeRequest: (
-    payload: RequestPayload,
-    requestNumber: string,
-    createdAt: string,
-  ) => SavedRequest;
-  savePrototypeAttachments: (requestId: string, userId: string, files: File[]) => void;
   startWorkflow: (requestId: string) => Promise<InitializeWorkflowResult>;
   wait: (milliseconds: number) => Promise<void>;
   now: () => Date;

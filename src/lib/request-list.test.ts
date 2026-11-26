@@ -76,14 +76,13 @@ describe("F12 access handling", () => {
     expect(getRequestListState(false, 0, null)).toBe("empty");
     expect(getRequestListState(false, 1, classifyRequestReadError({ code: "42501" }))).toBe("ready");
   });
-  const owned = { userId: "self", prototype: true };
-  const foreign = { userId: "other", prototype: true };
-  const backend = { userId: "other", prototype: false };
-  it("never exposes another user's locally stored requests even on All Requests", () => {
-    expect(selectVisibleRequests([owned, foreign, backend], "self", false)).toEqual([owned, backend]);
+  const owned = { userId: "self" };
+  const foreign = { userId: "other" };
+  it("keeps every RLS-loaded row on All Requests", () => {
+    expect(selectVisibleRequests([owned, foreign], "self", false)).toEqual([owned, foreign]);
   });
   it("requires ownership for My Requests and a session for any results", () => {
-    expect(selectVisibleRequests([owned, foreign, backend], "self", true)).toEqual([owned]);
-    expect(selectVisibleRequests([owned, foreign, backend], undefined, false)).toEqual([]);
+    expect(selectVisibleRequests([owned, foreign], "self", true)).toEqual([owned]);
+    expect(selectVisibleRequests([owned, foreign], undefined, false)).toEqual([]);
   });
 });
