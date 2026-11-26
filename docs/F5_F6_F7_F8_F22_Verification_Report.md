@@ -6,7 +6,7 @@ Covers issues #260, #264, #268, #272, #276 and their sub-issues. Each "How to Te
 
 - **Database checks** (`verification/f5-f6-f22-db-verification.sql`): all 12 migrations applied in order to a fresh local PostgreSQL 16 database, with a small stub for Supabase's `auth` and `storage` schemas. The script acts as signed-in users through `auth.uid()` and the `authenticated` role, so RLS policies and triggers run the same way they do through PostgREST.
 - **App checks** (Vitest): new tests for routing, validation gateways, and workflow initialization, plus one added submission test.
-- Full suite: **290/290 passed** in 22 files (257 before). `tsc --noEmit`, `eslint`, and `npm run build` pass.
+- Full suite: **290/290 passed** in 23 files (257 before). `tsc --noEmit`, `eslint`, and `npm run build` pass.
 
 Rerun the database checks on a disposable database with migrations applied:
 
@@ -38,7 +38,7 @@ psql -v ON_ERROR_STOP=1 -f verification/f5-f6-f22-db-verification.sql
 
 1. **Amount precision CHECK cannot fire (F22).** `amount` is `numeric(12,2)`, so Postgres rounds `10.555` to `10.56` before `financial_requests_amount_precision` runs. A direct insert is stored as `10.56` instead of being rejected. The form and payload gateways still reject 3 decimals, so normal use is unaffected. Fixing this would need the column type or a `BEFORE INSERT` check on the raw input; the test records current behavior so a fix shows up as a change.
 2. **F7.4.2 still needs one live run.** The success path is verified with a mocked HTTP response. Confirming the real flow's run history needs someone with access to the Power Automate flow and its URL.
-3. **F5 doc step 5 will change with PR #173.** That PR renames the event to `request.insert_failed`. Whoever merges it should update the F5.4.3 test in `submission-service.test.ts` to the new name.
+3. **F5 doc step 5 changes with PR #173.** That PR renames the event to `request.insert_failed`. The F5.4.3 test lives in its own file and matches either name, so it passes whichever PR merges first.
 
 ## Code change for testability
 
@@ -59,5 +59,5 @@ psql -v ON_ERROR_STOP=1 -f verification/f5-f6-f22-db-verification.sql
 | `src/lib/workflow/initialize-workflow.test.ts` | New. F7.4 tests |
 | `src/lib/workflow/run-initialize-workflow.ts` | New. Workflow logic moved out of the server function |
 | `src/lib/workflow/initialize-workflow.ts` | Now a thin server-function wrapper |
-| `src/lib/requests/submission-service.test.ts` | Added F5.4.3 test |
+| `src/lib/requests/submission-logging.test.ts` | New. F5.4.3 test |
 | `docs/F5_F6_F7_F8_F22_Verification_Report.md` | This report |
